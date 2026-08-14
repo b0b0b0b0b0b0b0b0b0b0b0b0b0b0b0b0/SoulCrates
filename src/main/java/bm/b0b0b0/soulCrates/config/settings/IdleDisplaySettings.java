@@ -32,4 +32,7 @@ public final class IdleDisplaySettings extends YamlSerializable {
     public float interactSoundVolume = 0.8f;
 
     public float interactSoundPitch = 1.1f;
+
+    @net.elytrium.serializer.annotations.NewLine
+    public HologramSettings hologram = new HologramSettings();
 }

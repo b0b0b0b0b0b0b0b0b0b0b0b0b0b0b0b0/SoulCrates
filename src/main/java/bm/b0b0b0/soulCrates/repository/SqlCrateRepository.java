@@ -93,6 +93,12 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
                             PRIMARY KEY (player_uuid, crate_id)
                         )
                         """);
+                statement.execute("""
+                        CREATE TABLE IF NOT EXISTS soulcrates_npc_bindings (
+                            npc_id INTEGER NOT NULL PRIMARY KEY,
+                            crate_id TEXT NOT NULL
+                        )
+                        """);
             } catch (SQLException exception) {
                 throw new IllegalStateException("Crate database migration failed", exception);
             }
@@ -340,6 +346,57 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
                 statement.executeUpdate();
             } catch (SQLException exception) {
                 logger.warning("Failed to record last reward: " + exception.getMessage());
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Map<Integer, String>> loadAllNpcBindings() {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<Integer, String> values = new java.util.HashMap<>();
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "SELECT npc_id, crate_id FROM soulcrates_npc_bindings")) {
+                try (var resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        values.put(resultSet.getInt("npc_id"), resultSet.getString("crate_id").toLowerCase());
+                    }
+                }
+            } catch (SQLException exception) {
+                logger.warning("Failed to load NPC bindings: " + exception.getMessage());
+            }
+            return values;
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Void> saveNpcBinding(int npcId, String crateId) {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement("""
+                         INSERT INTO soulcrates_npc_bindings (npc_id, crate_id)
+                         VALUES (?, ?)
+                         ON CONFLICT(npc_id) DO UPDATE SET crate_id = excluded.crate_id
+                         """)) {
+                statement.setInt(1, npcId);
+                statement.setString(2, crateId.toLowerCase());
+                statement.executeUpdate();
+            } catch (SQLException exception) {
+                logger.warning("Failed to save NPC binding: " + exception.getMessage());
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteNpcBinding(int npcId) {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "DELETE FROM soulcrates_npc_bindings WHERE npc_id = ?")) {
+                statement.setInt(1, npcId);
+                statement.executeUpdate();
+            } catch (SQLException exception) {
+                logger.warning("Failed to delete NPC binding: " + exception.getMessage());
             }
         }, executor);
     }

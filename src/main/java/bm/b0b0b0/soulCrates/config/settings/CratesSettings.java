@@ -45,6 +45,12 @@ public final class CratesSettings extends YamlSerializable {
     @NewLine
     public CrateShopSettings shop = new CrateShopSettings();
 
+    @NewLine
+    @Comment({
+            @CommentValue("Redis pub/sub mirror for virtual keys and pity (MYSQL networks)."),
+    })
+    public RedisSettings redis = new RedisSettings();
+
     @Comment({
             @CommentValue("Permission node prefix for crate-specific nodes."),
     })

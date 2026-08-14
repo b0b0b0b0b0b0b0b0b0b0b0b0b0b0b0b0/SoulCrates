@@ -15,13 +15,17 @@ import bm.b0b0b0.soulCrates.hook.vault.VaultHookProvider;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.listener.CrateChunkListener;
 import bm.b0b0b0.soulCrates.listener.CrateInteractListener;
+import bm.b0b0b0.soulCrates.listener.NpcInteractListener;
 import bm.b0b0b0.soulCrates.listener.PlayerJoinListener;
+import bm.b0b0b0.soulCrates.redis.RedisPlayerMirror;
 import bm.b0b0b0.soulCrates.repository.CrateRepository;
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
 import bm.b0b0b0.soulCrates.service.CrateService;
+import bm.b0b0b0.soulCrates.service.hologram.CrateHologramService;
 import bm.b0b0b0.soulCrates.service.idle.IdleCrateDisplayService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
+import bm.b0b0b0.soulCrates.service.npc.CrateNpcService;
 import bm.b0b0b0.soulCrates.service.open.BulkOpenService;
 import bm.b0b0b0.soulCrates.service.player.PlayerDataService;
 import bm.b0b0b0.soulCrates.service.reward.BroadcastService;
@@ -32,6 +36,7 @@ import bm.b0b0b0.soulCrates.service.reroll.RerollService;
 import bm.b0b0b0.soulCrates.service.shop.KeyShopService;
 import bm.b0b0b0.soulCrates.session.SessionRegistry;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
+import java.util.concurrent.CompletableFuture;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -55,8 +60,11 @@ public final class SoulCratesCore {
     private PlayerDataService playerDataService;
     private BroadcastService broadcastService;
     private IdleCrateDisplayService idleCrateDisplayService;
+    private CrateHologramService hologramService;
     private BulkOpenService bulkOpenService;
     private KeyShopService keyShopService;
+    private CrateNpcService npcService;
+    private RedisPlayerMirror redisMirror;
     private RerollService rerollService;
     private CrateInteractListener crateInteractListener;
     private DatabaseBootstrap databaseBootstrap;
@@ -119,9 +127,14 @@ public final class SoulCratesCore {
     }
 
     private void attachRepository(CrateRepository repository) {
+        boolean mysql = "MYSQL".equalsIgnoreCase(pluginConfig.cratesSettings().database.mode);
+        redisMirror = new RedisPlayerMirror(plugin, mysql, pluginConfig.cratesSettings().redis);
         keyService = new KeyService(plugin, messageService, repository);
+        keyService.attachMirror(redisMirror);
         locationService = new CrateLocationService(repository);
         playerDataService = new PlayerDataService(repository, keyService);
+        playerDataService.attachMirror(redisMirror);
+        npcService = new CrateNpcService(repository);
         bulkOpenService = new BulkOpenService(
                 rewardRollService,
                 new PityService(repository),
@@ -137,14 +150,39 @@ public final class SoulCratesCore {
                 crateRegistry,
                 messageService
         );
+        hologramService = new CrateHologramService(
+                plugin,
+                messageService,
+                crateRegistry,
+                pluginConfig.cratesSettings().idleDisplay.hologram
+        );
         idleCrateDisplayService = new IdleCrateDisplayService(
                 plugin,
                 pluginConfig.cratesSettings().idleDisplay,
                 displayEngineRegistry,
                 crateRegistry,
-                locationService
+                locationService,
+                hologramService
         );
-        locationService.loadAll().whenComplete((ignored, error) -> PluginSchedulers.runGlobal(plugin, () -> {
+        var crateIds = crateRegistry.list().stream().map(crate -> crate.id()).toList();
+        redisMirror.startSubscriber(
+                (playerId, payload) -> {
+                    String[] parts = payload.split("\\|", 2);
+                    if (parts.length < 2) {
+                        return;
+                    }
+                    keyService.applyRemoteKeys(playerId, parts[0], Integer.parseInt(parts[1]));
+                },
+                (playerId, payload) -> {
+                    String[] parts = payload.split("\\|", 2);
+                    if (parts.length < 2) {
+                        return;
+                    }
+                    playerDataService.applyRemotePity(playerId, parts[0], Integer.parseInt(parts[1]));
+                },
+                playerId -> PluginSchedulers.runAsync(plugin, () -> playerDataService.reloadFromRemote(playerId, crateIds))
+        );
+        CompletableFuture.allOf(locationService.loadAll(), npcService.loadAll()).whenComplete((ignored, error) -> PluginSchedulers.runGlobal(plugin, () -> {
             if (error != null) {
                 startupLog.stepFail("Locations — " + error.getMessage());
             }
@@ -157,7 +195,8 @@ public final class SoulCratesCore {
                     broadcastService,
                     idleCrateDisplayService,
                     bulkOpenService,
-                    keyShopService
+                    keyShopService,
+                    npcService
             );
             idleCrateDisplayService.spawnAll();
             crateInteractListener = new CrateInteractListener(
@@ -166,15 +205,17 @@ public final class SoulCratesCore {
                     pluginConfig.cratesSettings().idleDisplay
             );
             plugin.getServer().getPluginManager().registerEvents(crateInteractListener, plugin);
+            plugin.getServer().getPluginManager().registerEvents(new NpcInteractListener(crateService, npcService), plugin);
             plugin.getServer().getPluginManager().registerEvents(new PlayerJoinListener(plugin, playerDataService, crateRegistry), plugin);
             plugin.getServer().getPluginManager().registerEvents(new CrateChunkListener(idleCrateDisplayService), plugin);
             for (org.bukkit.entity.Player online : plugin.getServer().getOnlinePlayers()) {
-                PluginSchedulers.runAsync(plugin, () -> playerDataService.preload(
-                        online.getUniqueId(),
-                        crateRegistry.list().stream().map(crate -> crate.id()).toList()
-                ));
+                PluginSchedulers.runAsync(plugin, () -> playerDataService.preload(online.getUniqueId(), crateIds));
             }
-            startupLog.stepOk("Database ready — locations=" + locationService.allBindings().size());
+            startupLog.stepOk("Database ready — locations="
+                    + locationService.allBindings().size()
+                    + ", npcs="
+                    + npcService.allBindings().size()
+                    + (redisMirror.enabled() ? ", redis=on" : ""));
             startupLog.bannerReady();
         }));
     }
@@ -198,8 +239,15 @@ public final class SoulCratesCore {
         if (hookRegistry != null) {
             hookRegistry.unloadHooks();
         }
+        if (redisMirror != null) {
+            redisMirror.close();
+            redisMirror = null;
+        }
         if (crateService != null) {
             crateService.shutdown();
+        }
+        if (npcService != null) {
+            npcService.clear();
         }
         if (databaseBootstrap != null) {
             databaseBootstrap.shutdown();

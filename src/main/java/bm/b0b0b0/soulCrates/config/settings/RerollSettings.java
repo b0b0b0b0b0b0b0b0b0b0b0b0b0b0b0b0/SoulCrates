@@ -25,4 +25,19 @@ public final class RerollSettings extends YamlSerializable {
             @CommentValue("Vault cost per paid reroll after free rolls. 0 = free."),
     })
     public double vaultCost = 0.0;
+
+    @Comment({
+            @CommentValue("Skip reroll GUI when opening with instant permission."),
+    })
+    public boolean skipOnInstantOpen = true;
+
+    @Comment({
+            @CommentValue("Skip reroll GUI when opening with skip-animation permission."),
+    })
+    public boolean skipOnSkipAnimation = false;
+
+    @Comment({
+            @CommentValue("Skip reroll GUI during bulk / multi open."),
+    })
+    public boolean skipOnMultiOpen = true;
 }

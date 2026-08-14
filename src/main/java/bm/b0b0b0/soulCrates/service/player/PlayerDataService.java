@@ -1,5 +1,6 @@
 package bm.b0b0b0.soulCrates.service.player;
 
+import bm.b0b0b0.soulCrates.redis.RedisPlayerMirror;
 import bm.b0b0b0.soulCrates.repository.CrateRepository;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import java.util.Collection;
@@ -15,10 +16,15 @@ public final class PlayerDataService {
     private final Map<UUID, Map<String, Integer>> opensCache = new ConcurrentHashMap<>();
     private final Map<UUID, Map<String, Integer>> pityCache = new ConcurrentHashMap<>();
     private final Map<UUID, Map<String, String>> lastRewardCache = new ConcurrentHashMap<>();
+    private RedisPlayerMirror mirror;
 
     public PlayerDataService(CrateRepository repository, KeyService keyService) {
         this.repository = repository;
         this.keyService = keyService;
+    }
+
+    public void attachMirror(RedisPlayerMirror mirror) {
+        this.mirror = mirror;
     }
 
     public CompletableFuture<Void> preload(UUID playerId, Collection<String> crateIds) {
@@ -78,8 +84,22 @@ public final class PlayerDataService {
     }
 
     public void onPityUpdated(UUID playerId, String crateId, int counter) {
-        pityCache.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
-                .put(crateId.toLowerCase(), counter);
+        applyPityLocal(playerId, crateId, counter);
+        if (mirror != null && mirror.enabled()) {
+            mirror.publishPity(playerId, crateId, counter);
+        }
+    }
+
+    public void applyRemotePity(UUID playerId, String crateId, int counter) {
+        applyPityLocal(playerId, crateId, counter);
+    }
+
+    public CompletableFuture<Void> reloadFromRemote(UUID playerId, Collection<String> crateIds) {
+        CompletableFuture<Void> keysFuture = keyService.preloadPlayer(playerId, crateIds);
+        CompletableFuture<Void> pityFuture = repository.loadAllPityCounters(playerId).thenAccept(values ->
+                pityCache.put(playerId, new ConcurrentHashMap<>(values))
+        );
+        return CompletableFuture.allOf(keysFuture, pityFuture);
     }
 
     public void onRewardRecorded(UUID playerId, String crateId, String rewardId) {
@@ -90,5 +110,10 @@ public final class PlayerDataService {
     public void incrementOpens(UUID playerId, String crateId) {
         opensCache.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
                 .merge(crateId.toLowerCase(), 1, Integer::sum);
+    }
+
+    private void applyPityLocal(UUID playerId, String crateId, int counter) {
+        pityCache.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
+                .put(crateId.toLowerCase(), counter);
     }
 }

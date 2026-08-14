@@ -2,6 +2,7 @@ package bm.b0b0b0.soulCrates.service.key;
 
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
+import bm.b0b0b0.soulCrates.redis.RedisPlayerMirror;
 import bm.b0b0b0.soulCrates.repository.CrateRepository;
 import bm.b0b0b0.soulCrates.util.SoulCratesKeys;
 import java.util.Collection;
@@ -23,11 +24,16 @@ public final class KeyService {
     private final MessageService messageService;
     private final CrateRepository repository;
     private final Map<UUID, Map<String, Integer>> virtualCache = new ConcurrentHashMap<>();
+    private RedisPlayerMirror mirror;
 
     public KeyService(Plugin plugin, MessageService messageService, CrateRepository repository) {
         this.plugin = plugin;
         this.messageService = messageService;
         this.repository = repository;
+    }
+
+    public void attachMirror(RedisPlayerMirror mirror) {
+        this.mirror = mirror;
     }
 
     public void preload(UUID playerId) {
@@ -68,7 +74,13 @@ public final class KeyService {
         int next = Math.max(0, virtualKeys(playerId, crateId) + amount);
         virtualCache.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
                 .put(crateId.toLowerCase(Locale.ROOT), next);
-        return repository.saveVirtualKeys(playerId, crateId, next);
+        return repository.saveVirtualKeys(playerId, crateId, next)
+                .thenRun(() -> publishKeys(playerId, crateId, next));
+    }
+
+    public void applyRemoteKeys(UUID playerId, String crateId, int amount) {
+        virtualCache.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
+                .put(crateId.toLowerCase(Locale.ROOT), Math.max(0, amount));
     }
 
     public int countPhysicalKeys(Player player, String crateId) {
@@ -98,16 +110,12 @@ public final class KeyService {
             int virtual = virtualKeys(player.getUniqueId(), crate.id());
             if (virtual >= remaining) {
                 int left = virtual - remaining;
-                repository.saveVirtualKeys(player.getUniqueId(), crate.id(), left);
-                virtualCache.computeIfAbsent(player.getUniqueId(), ignored -> new ConcurrentHashMap<>())
-                        .put(crate.id(), left);
+                saveVirtualKeysLocal(player.getUniqueId(), crate.id(), left);
                 return true;
             }
             remaining -= virtual;
             if (virtual > 0) {
-                repository.saveVirtualKeys(player.getUniqueId(), crate.id(), 0);
-                virtualCache.computeIfAbsent(player.getUniqueId(), ignored -> new ConcurrentHashMap<>())
-                        .put(crate.id(), 0);
+                saveVirtualKeysLocal(player.getUniqueId(), crate.id(), 0);
             }
         }
         if (remaining <= 0) {
@@ -178,5 +186,18 @@ public final class KeyService {
 
     public void clearCache() {
         virtualCache.clear();
+    }
+
+    private void saveVirtualKeysLocal(UUID playerId, String crateId, int amount) {
+        virtualCache.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
+                .put(crateId.toLowerCase(Locale.ROOT), amount);
+        repository.saveVirtualKeys(playerId, crateId, amount);
+        publishKeys(playerId, crateId, amount);
+    }
+
+    private void publishKeys(UUID playerId, String crateId, int amount) {
+        if (mirror != null && mirror.enabled()) {
+            mirror.publishKeys(playerId, crateId, amount);
+        }
     }
 }

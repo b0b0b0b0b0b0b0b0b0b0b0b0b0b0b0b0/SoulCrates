@@ -5,6 +5,7 @@ import bm.b0b0b0.soulCrates.engine.DisplayComponent;
 import bm.b0b0b0.soulCrates.engine.DisplayEngineRegistry;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
+import bm.b0b0b0.soulCrates.service.hologram.CrateHologramService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
@@ -26,6 +27,7 @@ public final class IdleCrateDisplayService {
     private final DisplayEngineRegistry displayEngineRegistry;
     private final CrateRegistry crateRegistry;
     private final CrateLocationService locationService;
+    private final CrateHologramService hologramService;
     private final Map<String, DisplayComponent> activeDisplays = new ConcurrentHashMap<>();
     private final Set<String> pausedKeys = ConcurrentHashMap.newKeySet();
     private ScheduledTask particleTask;
@@ -35,17 +37,22 @@ public final class IdleCrateDisplayService {
             IdleDisplaySettings settings,
             DisplayEngineRegistry displayEngineRegistry,
             CrateRegistry crateRegistry,
-            CrateLocationService locationService
+            CrateLocationService locationService,
+            CrateHologramService hologramService
     ) {
         this.plugin = plugin;
         this.settings = settings;
         this.displayEngineRegistry = displayEngineRegistry;
         this.crateRegistry = crateRegistry;
         this.locationService = locationService;
+        this.hologramService = hologramService;
     }
 
     public void applySettings(IdleDisplaySettings settings) {
         this.settings = settings;
+        if (hologramService != null) {
+            hologramService.applySettings(settings.hologram);
+        }
         restartParticleTask();
     }
 
@@ -83,9 +90,15 @@ public final class IdleCrateDisplayService {
             component.playAnimation(crateOptional.get().idleAnimation());
         }
         activeDisplays.put(locationKey, component);
+        if (hologramService != null) {
+            hologramService.spawn(locationKey, crateId, location);
+        }
     }
 
     public void despawn(String locationKey) {
+        if (hologramService != null) {
+            hologramService.despawn(locationKey);
+        }
         DisplayComponent component = activeDisplays.remove(locationKey);
         if (component != null) {
             component.destroy();
@@ -150,6 +163,9 @@ public final class IdleCrateDisplayService {
         }
         despawnAll();
         pausedKeys.clear();
+        if (hologramService != null) {
+            hologramService.shutdown();
+        }
     }
 
     private void restartParticleTask() {

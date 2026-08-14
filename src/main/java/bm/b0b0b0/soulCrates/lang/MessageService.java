@@ -151,6 +151,10 @@ public final class MessageService {
         return miniMessage.deserialize(template, resolvers);
     }
 
+    public Component parse(String template) {
+        return miniMessage.deserialize(template == null ? "" : template);
+    }
+
     public void send(UUID playerId, String key, TagResolver... resolvers) {
         Player player = plugin.getServer().getPlayer(playerId);
         if (player == null) {

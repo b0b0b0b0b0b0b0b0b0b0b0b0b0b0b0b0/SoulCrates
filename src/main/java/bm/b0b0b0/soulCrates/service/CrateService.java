@@ -9,6 +9,7 @@ import bm.b0b0b0.soulCrates.config.PluginConfig;
 import bm.b0b0b0.soulCrates.config.settings.CrateDefinitionSettings;
 import bm.b0b0b0.soulCrates.config.settings.IdleDisplaySettings;
 import bm.b0b0b0.soulCrates.config.settings.PremiumOpeningSettings;
+import bm.b0b0b0.soulCrates.config.settings.RerollSettings;
 import bm.b0b0b0.soulCrates.engine.DisplayComponent;
 import bm.b0b0b0.soulCrates.engine.DisplayEngineRegistry;
 import bm.b0b0b0.soulCrates.gui.CrateConfirmMenu;
@@ -26,6 +27,7 @@ import bm.b0b0b0.soulCrates.repository.CrateRepository;
 import bm.b0b0b0.soulCrates.service.idle.IdleCrateDisplayService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
+import bm.b0b0b0.soulCrates.service.npc.CrateNpcService;
 import bm.b0b0b0.soulCrates.service.player.PlayerDataService;
 import bm.b0b0b0.soulCrates.service.reward.BroadcastService;
 import bm.b0b0b0.soulCrates.service.reward.PityService;
@@ -51,6 +53,12 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class CrateService {
 
+    private enum OpeningSkipMode {
+        INSTANT,
+        SKIP_ANIMATION,
+        MULTI
+    }
+
     private final JavaPlugin plugin;
     private final ConfigurationLoader configurationLoader;
     private PluginConfig pluginConfig;
@@ -71,6 +79,7 @@ public final class CrateService {
     private IdleCrateDisplayService idleCrateDisplayService;
     private BulkOpenService bulkOpenService;
     private KeyShopService keyShopService;
+    private CrateNpcService npcService;
     private volatile boolean loaded;
     private final Map<UUID, Long> openCooldownUntil = new ConcurrentHashMap<>();
 
@@ -123,7 +132,8 @@ public final class CrateService {
             BroadcastService broadcastService,
             IdleCrateDisplayService idleCrateDisplayService,
             BulkOpenService bulkOpenService,
-            KeyShopService keyShopService
+            KeyShopService keyShopService,
+            CrateNpcService npcService
     ) {
         this.repository = repository;
         this.pityService = new PityService(repository);
@@ -135,6 +145,7 @@ public final class CrateService {
         this.idleCrateDisplayService = idleCrateDisplayService;
         this.bulkOpenService = bulkOpenService;
         this.keyShopService = keyShopService;
+        this.npcService = npcService;
         this.loaded = true;
     }
 
@@ -178,6 +189,10 @@ public final class CrateService {
 
     public CrateLocationService locationService() {
         return locationService;
+    }
+
+    public CrateNpcService npcService() {
+        return npcService;
     }
 
     public IdleDisplaySettings idleDisplaySettings() {
@@ -369,6 +384,44 @@ public final class CrateService {
             }
             messageService.send(player.getUniqueId(), "unsetcrate-success");
         }));
+    }
+
+    public void bindNpc(Player player, String crateId, int npcId) {
+        if (!player.hasPermission("soulcrates.command.admin")) {
+            messageService.send(player.getUniqueId(), "no-permission");
+            return;
+        }
+        if (npcService == null) {
+            messageService.send(player.getUniqueId(), "startup-not-ready");
+            return;
+        }
+        Optional<CrateDefinition> crateOptional = findCrate(crateId);
+        if (crateOptional.isEmpty()) {
+            messageService.send(player.getUniqueId(), "crate-not-found", messageService.placeholder("crate", crateId));
+            return;
+        }
+        npcService.bind(npcId, crateId).thenRun(() -> PluginSchedulers.run(plugin, player, () -> messageService.send(
+                player.getUniqueId(),
+                "setnpc-success",
+                messageService.placeholder("crate", crateOptional.get().displayName()),
+                messageService.placeholder("npc", String.valueOf(npcId))
+        )));
+    }
+
+    public void unbindNpc(Player player, int npcId) {
+        if (!player.hasPermission("soulcrates.command.admin")) {
+            messageService.send(player.getUniqueId(), "no-permission");
+            return;
+        }
+        if (npcService == null) {
+            messageService.send(player.getUniqueId(), "startup-not-ready");
+            return;
+        }
+        npcService.unbind(npcId).thenRun(() -> PluginSchedulers.run(plugin, player, () -> messageService.send(
+                player.getUniqueId(),
+                "unsetnpc-success",
+                messageService.placeholder("npc", String.valueOf(npcId))
+        )));
     }
 
     public void giveKeys(CommandSender sender, Player target, String crateId, int amount, boolean physical) {
@@ -664,11 +717,11 @@ public final class CrateService {
                 messageService.placeholder("crate", crate.displayName())
         );
         if (player.hasPermission(premium.instantOpenPermission)) {
-            finishWithoutAnimation(player, session, premium.instantSkipsReroll);
+            finishWithoutAnimation(player, session, OpeningSkipMode.INSTANT);
             return;
         }
         if (player.hasPermission(premium.skipAnimationPermission)) {
-            finishWithoutAnimation(player, session, false);
+            finishWithoutAnimation(player, session, OpeningSkipMode.SKIP_ANIMATION);
             return;
         }
         DisplayComponent displayComponent = displayEngineRegistry.createComponent(crate, context.crateLocation(), player);
@@ -680,8 +733,15 @@ public final class CrateService {
         session.start(player);
     }
 
-    private void finishWithoutAnimation(Player player, CrateOpeningSession session, boolean skipReroll) {
-        if (skipReroll || !session.crateDefinition().reroll().enabled || !rerollService.canReroll(player, session)) {
+    private void finishWithoutAnimation(Player player, CrateOpeningSession session, OpeningSkipMode mode) {
+        RerollSettings reroll = session.crateDefinition().reroll();
+        PremiumOpeningSettings premium = pluginConfig.cratesSettings().premiumOpening;
+        boolean skipReroll = switch (mode) {
+            case INSTANT -> premium.instantSkipsReroll || reroll.skipOnInstantOpen;
+            case SKIP_ANIMATION -> reroll.skipOnSkipAnimation;
+            case MULTI -> reroll.skipOnMultiOpen;
+        };
+        if (skipReroll || !reroll.enabled || !rerollService.canReroll(player, session)) {
             claimReward(player, session);
             return;
         }

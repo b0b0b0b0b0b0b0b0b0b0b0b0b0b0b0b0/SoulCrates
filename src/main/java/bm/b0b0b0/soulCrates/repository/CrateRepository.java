@@ -36,4 +36,10 @@ public interface CrateRepository {
     CompletableFuture<Map<String, String>> loadLastRewards(UUID playerId);
 
     CompletableFuture<Void> recordLastReward(UUID playerId, String crateId, String rewardId);
+
+    CompletableFuture<Map<Integer, String>> loadAllNpcBindings();
+
+    CompletableFuture<Void> saveNpcBinding(int npcId, String crateId);
+
+    CompletableFuture<Void> deleteNpcBinding(int npcId);
 }

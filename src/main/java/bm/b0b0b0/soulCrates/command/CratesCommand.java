@@ -1,6 +1,7 @@
 package bm.b0b0b0.soulCrates.command;
 
 import bm.b0b0b0.soulCrates.bootstrap.SoulCratesCore;
+import bm.b0b0b0.soulCrates.hook.citizens.CitizensBridge;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.service.CrateService;
 import java.util.ArrayList;
@@ -12,12 +13,13 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 public final class CratesCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> ROOT_SUBCOMMANDS = List.of(
-            "open", "preview", "editor", "reload", "givekey", "setcrate", "keys", "stats", "locations", "shop"
+            "open", "preview", "editor", "reload", "givekey", "setcrate", "setnpc", "keys", "stats", "locations", "shop"
     );
 
     private final SoulCratesCore core;
@@ -164,6 +166,39 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
             core.crateService().bindCrate(player, args[1], block.getLocation());
             return true;
         }
+        if ("setnpc".equals(sub)) {
+            if (!(sender instanceof Player player)) {
+                messages.send(sender, "player-only");
+                return true;
+            }
+            if (!player.hasPermission("soulcrates.command.admin")) {
+                messages.send(player.getUniqueId(), "no-permission");
+                return true;
+            }
+            if (!CitizensBridge.isAvailable()) {
+                messages.send(player.getUniqueId(), "setnpc-citizens-missing");
+                return true;
+            }
+            Entity target = player.getTargetEntity(5);
+            if (target == null) {
+                messages.send(player.getUniqueId(), "setnpc-no-entity");
+                return true;
+            }
+            var npcIdOptional = CitizensBridge.npcId(target);
+            if (npcIdOptional.isEmpty()) {
+                messages.send(player.getUniqueId(), "setnpc-not-npc");
+                return true;
+            }
+            if (args.length >= 2 && "remove".equalsIgnoreCase(args[1])) {
+                core.crateService().unbindNpc(player, npcIdOptional.get());
+                return true;
+            }
+            if (args.length < 2) {
+                return false;
+            }
+            core.crateService().bindNpc(player, args[1], npcIdOptional.get());
+            return true;
+        }
         if ("keys".equals(sub)) {
             if (!(sender instanceof Player player)) {
                 messages.send(sender, "player-only");
@@ -237,8 +272,13 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
                         .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT)))
                         .toList();
             }
-            if ("open".equals(sub) || "preview".equals(sub) || "keys".equals(sub) || "setcrate".equals(sub)) {
+            if ("open".equals(sub) || "preview".equals(sub) || "keys".equals(sub) || "setcrate".equals(sub) || "setnpc".equals(sub)) {
                 if ("setcrate".equals(sub)) {
+                    List<String> options = new ArrayList<>(crateIds(args[1]));
+                    options.add("remove");
+                    return options;
+                }
+                if ("setnpc".equals(sub)) {
                     List<String> options = new ArrayList<>(crateIds(args[1]));
                     options.add("remove");
                     return options;
