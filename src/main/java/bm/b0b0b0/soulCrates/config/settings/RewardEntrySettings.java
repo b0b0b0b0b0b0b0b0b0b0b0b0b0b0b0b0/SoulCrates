@@ -14,6 +14,11 @@ public final class RewardEntrySettings extends YamlSerializable {
     public String id = "common";
 
     @Comment({
+            @CommentValue("Rarity tier id from crate rarities list. Empty = default pool."),
+    })
+    public String rarity = "";
+
+    @Comment({
             @CommentValue("Roll weight. Higher = more common."),
     })
     public double weight = 10.0;

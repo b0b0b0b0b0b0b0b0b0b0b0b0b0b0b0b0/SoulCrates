@@ -3,6 +3,7 @@ package bm.b0b0b0.soulCrates.config;
 import bm.b0b0b0.soulCrates.config.settings.CrateDefinitionSettings;
 import bm.b0b0b0.soulCrates.config.settings.CrateShopSettings;
 import bm.b0b0b0.soulCrates.config.settings.CratesSettings;
+import bm.b0b0b0.soulCrates.config.settings.GuiClaimSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiConfirmSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiEditorSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiGeneralSettings;
@@ -59,6 +60,10 @@ public final class ConfigurationLoader {
                 new GuiShopSettings(),
                 dataFolderPath.resolve("gui").resolve("shop.yml")
         );
+        GuiClaimSettings guiClaimSettings = SerializedConfigReloader.reload(
+                new GuiClaimSettings(),
+                dataFolderPath.resolve("gui").resolve("claim.yml")
+        );
         CrateShopSettings crateShopSettings = SerializedConfigReloader.reload(
                 new CrateShopSettings(),
                 dataFolderPath.resolve("shop.yml")
@@ -74,6 +79,7 @@ public final class ConfigurationLoader {
                 guiSpinnerSettings,
                 guiEditorSettings,
                 guiRerollSettings,
+                guiClaimSettings,
                 guiShopSettings,
                 crateShopSettings,
                 crateDefinitions

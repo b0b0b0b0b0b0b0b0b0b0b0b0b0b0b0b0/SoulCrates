@@ -43,6 +43,12 @@ public final class CratesSettings extends YamlSerializable {
     public PremiumOpeningSettings premiumOpening = new PremiumOpeningSettings();
 
     @NewLine
+    public ClaimSettings claim = new ClaimSettings();
+
+    @NewLine
+    public LastWinnerSettings lastWinner = new LastWinnerSettings();
+
+    @NewLine
     public CrateShopSettings shop = new CrateShopSettings();
 
     @NewLine

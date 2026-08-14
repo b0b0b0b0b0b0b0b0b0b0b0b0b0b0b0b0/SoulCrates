@@ -27,4 +27,9 @@ public final class KeySettings extends YamlSerializable {
             @CommentValue("Accept virtual keys stored in database."),
     })
     public boolean virtualKeys = true;
+
+    @Comment({
+            @CommentValue("Guaranteed rarity for keys of this crate. Empty = normal roll."),
+    })
+    public String guaranteedRarity = "";
 }

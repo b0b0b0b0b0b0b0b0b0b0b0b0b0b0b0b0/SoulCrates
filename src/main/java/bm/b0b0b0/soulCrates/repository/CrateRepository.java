@@ -1,5 +1,8 @@
 package bm.b0b0b0.soulCrates.repository;
 
+import bm.b0b0b0.soulCrates.model.PendingClaim;
+import bm.b0b0b0.soulCrates.model.WinnerEntry;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -42,4 +45,16 @@ public interface CrateRepository {
     CompletableFuture<Void> saveNpcBinding(int npcId, String crateId);
 
     CompletableFuture<Void> deleteNpcBinding(int npcId);
+
+    CompletableFuture<Long> enqueueClaim(UUID playerId, String crateId, String rewardJson);
+
+    CompletableFuture<List<PendingClaim>> loadPendingClaims(UUID playerId);
+
+    CompletableFuture<Integer> countPendingClaims(UUID playerId);
+
+    CompletableFuture<Boolean> deleteClaim(long claimId, UUID playerId);
+
+    CompletableFuture<Void> recordWinner(String crateId, UUID playerId, String playerName, String rewardId, String rewardDisplay, long wonAt, int maxHistory);
+
+    CompletableFuture<List<WinnerEntry>> loadWinnerHistory(String crateId, int limit);
 }

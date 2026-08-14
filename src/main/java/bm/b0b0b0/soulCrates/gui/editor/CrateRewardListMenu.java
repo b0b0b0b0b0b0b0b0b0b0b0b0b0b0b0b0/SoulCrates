@@ -122,6 +122,7 @@ public final class CrateRewardListMenu extends SoulMenu {
     static RewardDefinition toDefinition(RewardEntrySettings entry) {
         return new RewardDefinition(
                 entry.id.toLowerCase(Locale.ROOT),
+                entry.rarity == null ? "" : entry.rarity.toLowerCase(Locale.ROOT),
                 entry.weight,
                 entry.displayName,
                 entry.material,

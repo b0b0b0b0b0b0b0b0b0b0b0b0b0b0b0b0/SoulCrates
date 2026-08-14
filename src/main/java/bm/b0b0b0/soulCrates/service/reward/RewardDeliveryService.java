@@ -1,10 +1,13 @@
 package bm.b0b0b0.soulCrates.service.reward;
 
+import bm.b0b0b0.soulCrates.config.settings.ClaimSettings;
 import bm.b0b0b0.soulCrates.hook.HookRegistry;
 import bm.b0b0b0.soulCrates.hook.vault.VaultEconomyHook;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
+import bm.b0b0b0.soulCrates.service.claim.ClaimService;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -21,7 +24,29 @@ public final class RewardDeliveryService {
         this.hookRegistry = hookRegistry;
     }
 
-    public void deliver(Player player, String crateId, RewardDefinition reward) {
+    public CompletableFuture<DeliveryResult> deliverAsync(
+            Player player,
+            String crateId,
+            RewardDefinition reward,
+            ClaimSettings claimSettings,
+            ClaimService claimService
+    ) {
+        if (claimSettings != null && claimSettings.enabled && claimSettings.alwaysToClaim && claimService != null) {
+            return claimService.enqueue(player.getUniqueId(), crateId, reward)
+                    .thenApply(claimId -> claimId > 0 ? DeliveryResult.queued(reward) : DeliveryResult.failure());
+        }
+        boolean hasItemGrants = hasItemGrants(reward);
+        if (hasItemGrants && claimSettings != null && claimSettings.enabled && claimSettings.overflowToClaim && claimService != null) {
+            if (!hasInventorySpace(player, reward)) {
+                return claimService.enqueue(player.getUniqueId(), crateId, reward)
+                        .thenApply(claimId -> claimId > 0 ? DeliveryResult.queued(reward) : DeliveryResult.failure());
+            }
+        }
+        deliverDirect(player, crateId, reward);
+        return CompletableFuture.completedFuture(DeliveryResult.direct());
+    }
+
+    public void deliverDirect(Player player, String crateId, RewardDefinition reward) {
         for (String grant : reward.grants()) {
             deliverGrant(player, grant);
         }
@@ -32,6 +57,51 @@ public final class RewardDeliveryService {
                     .replace("{reward}", reward.id());
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), parsed);
         }
+    }
+
+    private boolean hasItemGrants(RewardDefinition reward) {
+        for (String grant : reward.grants()) {
+            if (grant == null || grant.isBlank()) {
+                continue;
+            }
+            String normalized = grant.toLowerCase(Locale.ROOT);
+            if (!normalized.startsWith("vault:")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasInventorySpace(Player player, RewardDefinition reward) {
+        int neededStacks = 0;
+        for (String grant : reward.grants()) {
+            if (grant == null || grant.isBlank()) {
+                continue;
+            }
+            String normalized = grant.toLowerCase(Locale.ROOT);
+            if (normalized.startsWith("vault:")) {
+                continue;
+            }
+            int separator = grant.indexOf(':');
+            if (separator <= 0) {
+                continue;
+            }
+            Material material = Material.matchMaterial(grant.substring(0, separator));
+            if (material == null || material.isAir()) {
+                continue;
+            }
+            neededStacks++;
+        }
+        if (neededStacks <= 0) {
+            return true;
+        }
+        int emptySlots = 0;
+        for (ItemStack stack : player.getInventory().getStorageContents()) {
+            if (stack == null || stack.isEmpty()) {
+                emptySlots++;
+            }
+        }
+        return emptySlots >= neededStacks;
     }
 
     private void deliverGrant(Player player, String grant) {

@@ -2,8 +2,10 @@ package bm.b0b0b0.soulCrates.model;
 
 import bm.b0b0b0.soulCrates.config.settings.AnimationSettings;
 import bm.b0b0b0.soulCrates.config.settings.KeySettings;
+import bm.b0b0b0.soulCrates.config.settings.LootBoxSettings;
 import bm.b0b0b0.soulCrates.config.settings.OpeningSettings;
 import bm.b0b0b0.soulCrates.config.settings.PitySettings;
+import bm.b0b0b0.soulCrates.config.settings.RarityTierSettings;
 import bm.b0b0b0.soulCrates.config.settings.RerollSettings;
 import java.util.List;
 import org.bukkit.Material;
@@ -21,6 +23,8 @@ public record CrateDefinition(
         KeySettings keys,
         RerollSettings reroll,
         PitySettings pity,
+        LootBoxSettings lootBox,
+        List<RarityTierSettings> rarities,
         List<RewardDefinition> rewards
 ) {
 }

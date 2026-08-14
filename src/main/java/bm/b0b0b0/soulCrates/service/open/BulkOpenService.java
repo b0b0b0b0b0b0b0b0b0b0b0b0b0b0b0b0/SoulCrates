@@ -1,14 +1,18 @@
 package bm.b0b0b0.soulCrates.service.open;
 
+import bm.b0b0b0.soulCrates.config.settings.ClaimSettings;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.model.RewardRollResult;
 import bm.b0b0b0.soulCrates.repository.CrateRepository;
+import bm.b0b0b0.soulCrates.service.claim.ClaimService;
 import bm.b0b0b0.soulCrates.service.player.PlayerDataService;
 import bm.b0b0b0.soulCrates.service.reward.BroadcastService;
+import bm.b0b0b0.soulCrates.service.reward.DeliveryResult;
 import bm.b0b0b0.soulCrates.service.reward.PityService;
 import bm.b0b0b0.soulCrates.service.reward.RewardDeliveryService;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
+import bm.b0b0b0.soulCrates.service.winner.LastWinnerService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +29,9 @@ public final class BulkOpenService {
     private final BroadcastService broadcastService;
     private final PlayerDataService playerDataService;
     private final CrateRepository repository;
+    private ClaimService claimService;
+    private LastWinnerService lastWinnerService;
+    private ClaimSettings claimSettings;
 
     public BulkOpenService(
             RewardRollService rewardRollService,
@@ -42,32 +49,56 @@ public final class BulkOpenService {
         this.repository = repository;
     }
 
+    public void attachClaim(ClaimService claimService, LastWinnerService lastWinnerService, ClaimSettings claimSettings) {
+        this.claimService = claimService;
+        this.lastWinnerService = lastWinnerService;
+        this.claimSettings = claimSettings;
+    }
+
     public CompletableFuture<List<RewardRollResult>> rollSequential(UUID playerId, CrateDefinition crate, int amount) {
+        return rollSequential(playerId, crate, amount, null);
+    }
+
+    public CompletableFuture<List<RewardRollResult>> rollSequential(UUID playerId, CrateDefinition crate, int amount, String guaranteedRarity) {
         List<RewardRollResult> results = new ArrayList<>();
         CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
         for (int index = 0; index < amount; index++) {
-            chain = chain.thenCompose(ignored -> rollOnce(playerId, crate).thenAccept(results::add));
+            chain = chain.thenCompose(ignored -> rollOnce(playerId, crate, guaranteedRarity).thenAccept(results::add));
         }
         return chain.thenApply(ignored -> List.copyOf(results));
     }
 
-    public void deliverAll(Player player, CrateDefinition crate, List<RewardRollResult> rolls) {
-        Map<String, Integer> summary = new LinkedHashMap<>();
+    public CompletableFuture<Void> deliverAll(Player player, CrateDefinition crate, List<RewardRollResult> rolls) {
+        if (rolls.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
         UUID playerId = player.getUniqueId();
         String crateId = crate.id();
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
         for (RewardRollResult roll : rolls) {
-            rewardDeliveryService.deliver(player, crateId, roll.reward());
-            broadcastService.maybeBroadcast(player, crate, roll.reward());
-            playerDataService.incrementOpens(playerId, crateId);
-            playerDataService.onRewardRecorded(playerId, crateId, roll.reward().id());
-            summary.merge(roll.reward().displayName(), 1, Integer::sum);
+            chain = chain.thenCompose(ignored -> rewardDeliveryService.deliverAsync(
+                    player,
+                    crateId,
+                    roll.reward(),
+                    claimSettings,
+                    claimService
+            ).thenAccept(result -> {
+                if (!result.isFailed()) {
+                    broadcastService.maybeBroadcast(player, crate, roll.reward());
+                    playerDataService.incrementOpens(playerId, crateId);
+                }
+            }));
         }
-        repository.loadPityCounter(playerId, crateId)
-                .thenAccept(counter -> playerDataService.onPityUpdated(playerId, crateId, counter));
-        if (!rolls.isEmpty()) {
+        return chain.thenRun(() -> {
+            repository.loadPityCounter(playerId, crateId)
+                    .thenAccept(counter -> playerDataService.onPityUpdated(playerId, crateId, counter));
             RewardRollResult last = rolls.get(rolls.size() - 1);
-            repository.recordLastReward(playerId, crateId, last.reward().id());
-        }
+            repository.recordLastReward(playerId, crateId, last.reward().id())
+                    .thenRun(() -> playerDataService.onRewardRecorded(playerId, crateId, last.reward().id()));
+            if (lastWinnerService != null) {
+                lastWinnerService.record(player, crateId, last.reward().id(), last.reward().displayName());
+            }
+        });
     }
 
     public String formatSummary(Map<String, Integer> summary) {
@@ -106,11 +137,11 @@ public final class BulkOpenService {
         return best;
     }
 
-    private CompletableFuture<RewardRollResult> rollOnce(UUID playerId, CrateDefinition crate) {
+    private CompletableFuture<RewardRollResult> rollOnce(UUID playerId, CrateDefinition crate, String guaranteedRarity) {
         return pityService.loadCounter(playerId, crate.id())
                 .thenCompose(counter -> pityService.shouldForcePity(crate, counter)
                         .thenCompose(forcePity -> {
-                            RewardRollResult roll = rewardRollService.roll(crate, counter, forcePity);
+                            RewardRollResult roll = rewardRollService.roll(crate, counter, forcePity, guaranteedRarity);
                             return pityService.afterRoll(playerId, crate, roll.pityTriggered(), roll.reward().id())
                                     .thenApply(ignored -> roll);
                         }));

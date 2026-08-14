@@ -35,8 +35,34 @@ public final class CrateDefinitionSettings extends YamlSerializable {
     public PitySettings pity = new PitySettings();
 
     @NewLine
+    public LootBoxSettings lootBox = new LootBoxSettings();
+
+    @NewLine
+    @Comment({@CommentValue("Rarity tiers for this crate. Empty = flat weight pool.")})
+    public java.util.List<RarityTierSettings> rarities = defaultRarities();
+
+    @NewLine
     @Comment({@CommentValue("Reward pool for this crate.")})
     public List<RewardEntrySettings> rewards = defaultRewards();
+
+    private static java.util.List<RarityTierSettings> defaultRarities() {
+        RarityTierSettings common = new RarityTierSettings();
+        common.id = "common";
+        common.displayName = "Common";
+        common.weight = 70.0;
+        common.color = "<gray>";
+        RarityTierSettings rare = new RarityTierSettings();
+        rare.id = "rare";
+        rare.displayName = "Rare";
+        rare.weight = 25.0;
+        rare.color = "<aqua>";
+        RarityTierSettings legendary = new RarityTierSettings();
+        legendary.id = "legendary";
+        legendary.displayName = "Legendary";
+        legendary.weight = 5.0;
+        legendary.color = "<gold>";
+        return java.util.List.of(common, rare, legendary);
+    }
 
     private static List<RewardEntrySettings> defaultRewards() {
         List<RewardEntrySettings> rewards = new ArrayList<>();
@@ -44,18 +70,21 @@ public final class CrateDefinitionSettings extends YamlSerializable {
         common.id = "common";
         common.weight = 70.0;
         common.displayName = "Diamond Stack";
+        common.rarity = "common";
         common.material = "DIAMOND";
         common.grants = List.of("DIAMOND:3");
         RewardEntrySettings rare = new RewardEntrySettings();
         rare.id = "rare";
         rare.weight = 25.0;
         rare.displayName = "Emerald Stack";
+        rare.rarity = "rare";
         rare.material = "EMERALD";
         rare.grants = List.of("EMERALD:5");
         RewardEntrySettings legendary = new RewardEntrySettings();
         legendary.id = "legendary";
         legendary.weight = 5.0;
         legendary.displayName = "Netherite Ingot";
+        legendary.rarity = "legendary";
         legendary.material = "NETHERITE_INGOT";
         legendary.grants = List.of("NETHERITE_INGOT:1");
         legendary.pityEligible = true;

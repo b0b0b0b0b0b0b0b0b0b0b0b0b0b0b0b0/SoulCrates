@@ -2,6 +2,7 @@ package bm.b0b0b0.soulCrates.config.settings;
 
 import net.elytrium.serializer.annotations.Comment;
 import net.elytrium.serializer.annotations.CommentValue;
+import net.elytrium.serializer.annotations.NewLine;
 import net.elytrium.serializer.language.object.YamlSerializable;
 
 public final class OpeningSettings extends YamlSerializable {
@@ -40,4 +41,7 @@ public final class OpeningSettings extends YamlSerializable {
             @CommentValue("Allow multi-open bundles for this crate."),
     })
     public boolean allowMultiOpen = true;
+
+    @NewLine
+    public MassOpeningSettings massOpening = new MassOpeningSettings();
 }

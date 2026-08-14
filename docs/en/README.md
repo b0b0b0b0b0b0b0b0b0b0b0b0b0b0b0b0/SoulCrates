@@ -212,14 +212,6 @@ api.pity(playerId, "default");
 
 Events in `bm.b0b0b0.soulCrates.api.event` — hook phases and finish for quests/stats.
 
-## Build
-
-```bash
-./gradlew build
-```
-
-JAR: `build/libs/SoulCrates-*.jar`. ModelEngine is `compileOnly` from `libs/ModelEngine-*.jar` (not in repo — add locally to build).
-
 ## Softdepend
 
 Vault, PlaceholderAPI, ModelEngine, ItemsAdder, **Citizens**, **DecentHolograms**, FancyHolograms — optional; missing plugins disable related features gracefully.

@@ -6,12 +6,17 @@ import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 public final class CratePreviewMenu extends SoulMenu {
 
@@ -22,6 +27,7 @@ public final class CratePreviewMenu extends SoulMenu {
     private final RewardRollService rewardRollService;
     private final BiConsumer<Player, Integer> openAction;
     private final Runnable backAction;
+    private final Map<Integer, Integer> multiOpenSlots = new HashMap<>();
 
     public CratePreviewMenu(
             UUID viewerId,
@@ -51,6 +57,7 @@ public final class CratePreviewMenu extends SoulMenu {
     @Override
     public void refresh() {
         getInventory().clear();
+        multiOpenSlots.clear();
         Player player = Bukkit.getPlayer(viewerId());
         if (player == null) {
             return;
@@ -64,21 +71,28 @@ public final class CratePreviewMenu extends SoulMenu {
             RewardDefinition reward = rewards.get(index);
             getInventory().setItem(
                     rewardSlots.get(index),
-                    GuiItemFactory.rewardPreview(messageService, player, reward, rewardRollService.chancePercent(crateDefinition, reward))
+                    GuiItemFactory.rewardPreview(
+                            messageService,
+                            player,
+                            crateDefinition,
+                            reward,
+                            rewardRollService.chancePercent(crateDefinition, reward)
+                    )
             );
         }
         getInventory().setItem(previewSettings.openSlot, GuiItemFactory.actionButton(messageService, player, "preview-open-title", "preview-open-lore"));
         if (previewSettings.multiOpenButtons
                 && crateDefinition.opening().allowMultiOpen
+                && crateDefinition.opening().massOpening.enabled
                 && player.hasPermission(premiumOpeningSettings.multiOpenPermission)) {
-            getInventory().setItem(
-                    previewSettings.multiOpenSlot5,
-                    GuiItemFactory.actionButton(messageService, player, "preview-open-x5-title", "preview-open-x5-lore")
-            );
-            getInventory().setItem(
-                    previewSettings.multiOpenSlot10,
-                    GuiItemFactory.actionButton(messageService, player, "preview-open-x10-title", "preview-open-x10-lore")
-            );
+            List<Integer> presets = crateDefinition.opening().massOpening.presets;
+            List<Integer> slots = previewSettings.multiOpenSlots;
+            for (int index = 0; index < presets.size() && index < slots.size(); index++) {
+                int amount = presets.get(index);
+                int slot = slots.get(index);
+                multiOpenSlots.put(slot, amount);
+                getInventory().setItem(slot, multiOpenButton(player, amount));
+            }
         }
         getInventory().setItem(previewSettings.backSlot, GuiItemFactory.cancelButton(messageService, player));
     }
@@ -94,14 +108,10 @@ public final class CratePreviewMenu extends SoulMenu {
             openAction.accept(player, 1);
             return;
         }
-        if (click.slot() == previewSettings.multiOpenSlot5) {
+        Integer amount = multiOpenSlots.get(click.slot());
+        if (amount != null) {
             player.closeInventory();
-            openAction.accept(player, 5);
-            return;
-        }
-        if (click.slot() == previewSettings.multiOpenSlot10) {
-            player.closeInventory();
-            openAction.accept(player, 10);
+            openAction.accept(player, amount);
             return;
         }
         if (click.slot() == previewSettings.backSlot) {
@@ -110,6 +120,28 @@ public final class CratePreviewMenu extends SoulMenu {
                 backAction.run();
             }
         }
+    }
+
+    private ItemStack multiOpenButton(Player player, int amount) {
+        if (amount < 0) {
+            return GuiItemFactory.actionButton(messageService, player, "preview-open-all-title", "preview-open-all-lore");
+        }
+        ItemStack item = new ItemStack(Material.GOLD_BLOCK);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(messageService.component(
+                    player.getUniqueId(),
+                    "preview-open-xn-title",
+                    messageService.placeholder("amount", Integer.toString(amount))
+            ));
+            meta.lore(List.of(messageService.component(
+                    player.getUniqueId(),
+                    "preview-open-xn-lore",
+                    messageService.placeholder("amount", Integer.toString(amount))
+            )));
+            item.setItemMeta(meta);
+        }
+        return item;
     }
 
     private static int normalizeSize(int size) {

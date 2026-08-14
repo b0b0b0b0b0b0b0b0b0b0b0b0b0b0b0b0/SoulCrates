@@ -2,6 +2,7 @@ package bm.b0b0b0.soulCrates.config;
 
 import bm.b0b0b0.soulCrates.config.settings.CrateShopSettings;
 import bm.b0b0b0.soulCrates.config.settings.CratesSettings;
+import bm.b0b0b0.soulCrates.config.settings.GuiClaimSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiConfirmSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiEditorSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiGeneralSettings;
@@ -21,6 +22,7 @@ public final class PluginConfig {
     private final GuiSpinnerSettings guiSpinnerSettings;
     private final GuiEditorSettings guiEditorSettings;
     private final GuiRerollSettings guiRerollSettings;
+    private final GuiClaimSettings guiClaimSettings;
     private final GuiShopSettings guiShopSettings;
     private final CrateShopSettings crateShopSettings;
     private final List<CrateDefinition> crateDefinitions;
@@ -33,6 +35,7 @@ public final class PluginConfig {
             GuiSpinnerSettings guiSpinnerSettings,
             GuiEditorSettings guiEditorSettings,
             GuiRerollSettings guiRerollSettings,
+            GuiClaimSettings guiClaimSettings,
             GuiShopSettings guiShopSettings,
             CrateShopSettings crateShopSettings,
             List<CrateDefinition> crateDefinitions
@@ -44,6 +47,7 @@ public final class PluginConfig {
         this.guiSpinnerSettings = guiSpinnerSettings;
         this.guiEditorSettings = guiEditorSettings;
         this.guiRerollSettings = guiRerollSettings;
+        this.guiClaimSettings = guiClaimSettings;
         this.guiShopSettings = guiShopSettings;
         this.crateShopSettings = crateShopSettings;
         this.crateDefinitions = crateDefinitions;
@@ -75,6 +79,10 @@ public final class PluginConfig {
 
     public GuiRerollSettings guiRerollSettings() {
         return guiRerollSettings;
+    }
+
+    public GuiClaimSettings guiClaimSettings() {
+        return guiClaimSettings;
     }
 
     public GuiShopSettings guiShopSettings() {

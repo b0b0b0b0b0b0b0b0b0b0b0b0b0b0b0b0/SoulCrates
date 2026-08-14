@@ -4,6 +4,7 @@ import java.util.List;
 
 public record RewardDefinition(
         String id,
+        String rarityId,
         double weight,
         String displayName,
         String material,

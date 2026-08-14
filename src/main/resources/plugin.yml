@@ -36,6 +36,10 @@ permissions:
     default: op
   soulcrates.command.shop:
     default: true
+  soulcrates.command.claim:
+    default: true
+  soulcrates.command.givelootbox:
+    default: op
   soulcrates.open.skip:
     default: op
   soulcrates.open.instant:

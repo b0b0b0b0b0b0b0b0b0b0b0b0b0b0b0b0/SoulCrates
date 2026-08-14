@@ -24,6 +24,8 @@ public final class GuiPreviewSettings extends YamlSerializable {
 
     public boolean multiOpenButtons = true;
 
+    public List<Integer> multiOpenSlots = List.of(47, 48, 51);
+
     public int multiOpenSlot5 = 47;
 
     public int multiOpenSlot10 = 51;

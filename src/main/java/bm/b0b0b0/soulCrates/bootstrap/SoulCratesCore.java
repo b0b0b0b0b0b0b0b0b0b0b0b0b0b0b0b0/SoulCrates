@@ -15,14 +15,17 @@ import bm.b0b0b0.soulCrates.hook.vault.VaultHookProvider;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.listener.CrateChunkListener;
 import bm.b0b0b0.soulCrates.listener.CrateInteractListener;
+import bm.b0b0b0.soulCrates.listener.LootBoxListener;
 import bm.b0b0b0.soulCrates.listener.NpcInteractListener;
 import bm.b0b0b0.soulCrates.listener.PlayerJoinListener;
 import bm.b0b0b0.soulCrates.redis.RedisPlayerMirror;
 import bm.b0b0b0.soulCrates.repository.CrateRepository;
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
 import bm.b0b0b0.soulCrates.service.CrateService;
+import bm.b0b0b0.soulCrates.service.claim.ClaimService;
 import bm.b0b0b0.soulCrates.service.hologram.CrateHologramService;
 import bm.b0b0b0.soulCrates.service.idle.IdleCrateDisplayService;
+import bm.b0b0b0.soulCrates.service.lootbox.LootBoxService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
 import bm.b0b0b0.soulCrates.service.npc.CrateNpcService;
@@ -34,6 +37,7 @@ import bm.b0b0b0.soulCrates.service.reward.RewardDeliveryService;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
 import bm.b0b0b0.soulCrates.service.reroll.RerollService;
 import bm.b0b0b0.soulCrates.service.shop.KeyShopService;
+import bm.b0b0b0.soulCrates.service.winner.LastWinnerService;
 import bm.b0b0b0.soulCrates.session.SessionRegistry;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import java.util.concurrent.CompletableFuture;
@@ -64,6 +68,9 @@ public final class SoulCratesCore {
     private BulkOpenService bulkOpenService;
     private KeyShopService keyShopService;
     private CrateNpcService npcService;
+    private ClaimService claimService;
+    private LastWinnerService lastWinnerService;
+    private LootBoxService lootBoxService;
     private RedisPlayerMirror redisMirror;
     private RerollService rerollService;
     private CrateInteractListener crateInteractListener;
@@ -135,6 +142,9 @@ public final class SoulCratesCore {
         playerDataService = new PlayerDataService(repository, keyService);
         playerDataService.attachMirror(redisMirror);
         npcService = new CrateNpcService(repository);
+        claimService = new ClaimService(repository, rewardDeliveryService, pluginConfig.cratesSettings().claim);
+        lastWinnerService = new LastWinnerService(repository, pluginConfig.cratesSettings().lastWinner);
+        lootBoxService = new LootBoxService(plugin, messageService);
         bulkOpenService = new BulkOpenService(
                 rewardRollService,
                 new PityService(repository),
@@ -143,6 +153,7 @@ public final class SoulCratesCore {
                 playerDataService,
                 repository
         );
+        bulkOpenService.attachClaim(claimService, lastWinnerService, pluginConfig.cratesSettings().claim);
         keyShopService = new KeyShopService(
                 pluginConfig.cratesSettings().shop,
                 hookRegistry,
@@ -196,8 +207,18 @@ public final class SoulCratesCore {
                     idleCrateDisplayService,
                     bulkOpenService,
                     keyShopService,
-                    npcService
+                    npcService,
+                    claimService,
+                    lastWinnerService,
+                    lootBoxService,
+                    configurationLoader,
+                    rewardDeliveryService,
+                    displayEngineRegistry,
+                    phaseFactory
             );
+            for (String crateId : crateIds) {
+                lastWinnerService.preload(crateId);
+            }
             idleCrateDisplayService.spawnAll();
             crateInteractListener = new CrateInteractListener(
                     crateService,
@@ -206,7 +227,8 @@ public final class SoulCratesCore {
             );
             plugin.getServer().getPluginManager().registerEvents(crateInteractListener, plugin);
             plugin.getServer().getPluginManager().registerEvents(new NpcInteractListener(crateService, npcService), plugin);
-            plugin.getServer().getPluginManager().registerEvents(new PlayerJoinListener(plugin, playerDataService, crateRegistry), plugin);
+            plugin.getServer().getPluginManager().registerEvents(new LootBoxListener(crateService, lootBoxService), plugin);
+            plugin.getServer().getPluginManager().registerEvents(new PlayerJoinListener(plugin, playerDataService, claimService, crateRegistry), plugin);
             plugin.getServer().getPluginManager().registerEvents(new CrateChunkListener(idleCrateDisplayService), plugin);
             for (org.bukkit.entity.Player online : plugin.getServer().getOnlinePlayers()) {
                 PluginSchedulers.runAsync(plugin, () -> playerDataService.preload(online.getUniqueId(), crateIds));
@@ -225,6 +247,12 @@ public final class SoulCratesCore {
         messageService.reload();
         phaseFactory = new PhaseFactory(plugin, messageService, pluginConfig.guiSpinnerSettings());
         broadcastService.applySettings(pluginConfig.cratesSettings().broadcast);
+        if (claimService != null) {
+            claimService.applySettings(pluginConfig.cratesSettings().claim);
+        }
+        if (lastWinnerService != null) {
+            lastWinnerService.applySettings(pluginConfig.cratesSettings().lastWinner);
+        }
         if (keyShopService != null) {
             keyShopService.applySettings(pluginConfig.cratesSettings().shop);
         }

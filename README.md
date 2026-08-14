@@ -280,14 +280,6 @@ api.pity(playerId, "default");
 
 События в пакете `bm.b0b0b0.soulCrates.api.event` — слушайте фазы и finish для квестов/статистики.
 
-## Сборка
-
-```bash
-./gradlew build
-```
-
-JAR: `build/libs/SoulCrates-*.jar`. ModelEngine — `compileOnly` из `libs/ModelEngine-*.jar` (не в репозитории, положи локально для сборки).
-
 ## Softdepend
 
 Vault, PlaceholderAPI, ModelEngine, ItemsAdder, **Citizens**, **DecentHolograms**, FancyHolograms — опционально; без них соответствующие фичи отключаются gracefully.

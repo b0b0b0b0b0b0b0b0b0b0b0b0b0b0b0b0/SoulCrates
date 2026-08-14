@@ -98,33 +98,55 @@ public final class KeyService {
         return total;
     }
 
-    public boolean consumeForOpen(Player player, CrateDefinition crate, int required) {
+    public CompletableFuture<Boolean> consumeForOpen(Player player, CrateDefinition crate, int required) {
         if (!crate.keys().enabled && !crate.opening().requireKey) {
-            return true;
+            return CompletableFuture.completedFuture(true);
         }
         if (!crate.opening().requireKey) {
-            return true;
+            return CompletableFuture.completedFuture(true);
         }
         int remaining = Math.max(1, required);
+        UUID playerId = player.getUniqueId();
+        String crateId = crate.id();
         if (crate.keys().virtualKeys) {
-            int virtual = virtualKeys(player.getUniqueId(), crate.id());
+            int virtual = virtualKeys(playerId, crateId);
             if (virtual >= remaining) {
-                int left = virtual - remaining;
-                saveVirtualKeysLocal(player.getUniqueId(), crate.id(), left);
-                return true;
+                return persistVirtualKeys(playerId, crateId, virtual - remaining);
             }
             remaining -= virtual;
             if (virtual > 0) {
-                saveVirtualKeysLocal(player.getUniqueId(), crate.id(), 0);
+                int physicalRequired = remaining;
+                return persistVirtualKeys(playerId, crateId, 0).thenCompose(saved -> {
+                    if (!saved) {
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    if (physicalRequired <= 0) {
+                        return CompletableFuture.completedFuture(true);
+                    }
+                    if (!crate.keys().physicalKeys) {
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    return CompletableFuture.completedFuture(consumePhysical(player, crateId, physicalRequired));
+                });
             }
         }
         if (remaining <= 0) {
-            return true;
+            return CompletableFuture.completedFuture(true);
         }
         if (!crate.keys().physicalKeys) {
-            return false;
+            return CompletableFuture.completedFuture(false);
         }
-        return consumePhysical(player, crate.id(), remaining);
+        return CompletableFuture.completedFuture(consumePhysical(player, crateId, remaining));
+    }
+
+    public CompletableFuture<Boolean> consumeForMultiOpen(Player player, CrateDefinition crate, int opens, int keysPerOpen) {
+        CompletableFuture<Boolean> chain = CompletableFuture.completedFuture(true);
+        for (int index = 0; index < opens; index++) {
+            chain = chain.thenCompose(success -> success
+                    ? consumeForOpen(player, crate, keysPerOpen)
+                    : CompletableFuture.completedFuture(false));
+        }
+        return chain;
     }
 
     public ItemStack createKeyItem(CrateDefinition crate, int amount) {
@@ -188,11 +210,15 @@ public final class KeyService {
         virtualCache.clear();
     }
 
-    private void saveVirtualKeysLocal(UUID playerId, String crateId, int amount) {
+    private CompletableFuture<Boolean> persistVirtualKeys(UUID playerId, String crateId, int amount) {
         virtualCache.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
-                .put(crateId.toLowerCase(Locale.ROOT), amount);
-        repository.saveVirtualKeys(playerId, crateId, amount);
-        publishKeys(playerId, crateId, amount);
+                .put(crateId.toLowerCase(Locale.ROOT), Math.max(0, amount));
+        return repository.saveVirtualKeys(playerId, crateId, amount)
+                .thenApply(ignored -> {
+                    publishKeys(playerId, crateId, amount);
+                    return true;
+                })
+                .exceptionally(ignored -> false);
     }
 
     private void publishKeys(UUID playerId, String crateId, int amount) {

@@ -1,6 +1,7 @@
 package bm.b0b0b0.soulCrates.listener;
 
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
+import bm.b0b0b0.soulCrates.service.claim.ClaimService;
 import bm.b0b0b0.soulCrates.service.player.PlayerDataService;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import java.util.List;
@@ -14,22 +15,37 @@ public final class PlayerJoinListener implements Listener {
 
     private final JavaPlugin plugin;
     private final PlayerDataService playerDataService;
+    private final ClaimService claimService;
     private final CrateRegistry crateRegistry;
 
-    public PlayerJoinListener(JavaPlugin plugin, PlayerDataService playerDataService, CrateRegistry crateRegistry) {
+    public PlayerJoinListener(
+            JavaPlugin plugin,
+            PlayerDataService playerDataService,
+            ClaimService claimService,
+            CrateRegistry crateRegistry
+    ) {
         this.plugin = plugin;
         this.playerDataService = playerDataService;
+        this.claimService = claimService;
         this.crateRegistry = crateRegistry;
     }
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         List<String> crateIds = crateRegistry.list().stream().map(crate -> crate.id()).toList();
-        PluginSchedulers.runAsync(plugin, () -> playerDataService.preload(event.getPlayer().getUniqueId(), crateIds));
+        PluginSchedulers.runAsync(plugin, () -> {
+            playerDataService.preload(event.getPlayer().getUniqueId(), crateIds).join();
+            if (claimService != null) {
+                claimService.preloadPlayer(event.getPlayer().getUniqueId()).join();
+            }
+        });
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         playerDataService.unload(event.getPlayer().getUniqueId());
+        if (claimService != null) {
+            claimService.unloadPlayer(event.getPlayer().getUniqueId());
+        }
     }
 }

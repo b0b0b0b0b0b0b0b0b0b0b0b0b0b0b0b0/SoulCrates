@@ -1,6 +1,7 @@
 package bm.b0b0b0.soulCrates.config;
 
 import bm.b0b0b0.soulCrates.config.settings.CrateDefinitionSettings;
+import bm.b0b0b0.soulCrates.config.settings.RarityTierSettings;
 import bm.b0b0b0.soulCrates.config.settings.RewardEntrySettings;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.DisplayEngineKind;
@@ -55,6 +56,7 @@ public final class CrateDefinitionLoader {
         for (RewardEntrySettings entry : settings.rewards) {
             rewards.add(new RewardDefinition(
                     entry.id.toLowerCase(Locale.ROOT),
+                    entry.rarity == null ? "" : entry.rarity.toLowerCase(Locale.ROOT),
                     Math.max(0.0, entry.weight),
                     entry.displayName,
                     entry.material,
@@ -65,6 +67,7 @@ public final class CrateDefinitionLoader {
                     entry.broadcast
             ));
         }
+        List<RarityTierSettings> rarities = settings.rarities == null ? List.of() : List.copyOf(settings.rarities);
         return new CrateDefinition(
                 settings.id.toLowerCase(Locale.ROOT),
                 settings.displayName,
@@ -78,6 +81,8 @@ public final class CrateDefinitionLoader {
                 settings.keys,
                 settings.reroll,
                 settings.pity,
+                settings.lootBox,
+                rarities,
                 List.copyOf(rewards)
         );
     }

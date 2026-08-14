@@ -1,7 +1,10 @@
 package bm.b0b0b0.soulCrates.gui;
 
+import bm.b0b0b0.soulCrates.config.settings.RarityTierSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
+import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
+import java.util.ArrayList;
 import java.util.List;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -26,6 +29,45 @@ public final class GuiItemFactory {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.displayName(Component.empty());
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public static ItemStack rewardPreview(
+            MessageService messages,
+            Player player,
+            CrateDefinition crate,
+            RewardDefinition reward,
+            double chancePercent
+    ) {
+        Material material = Material.matchMaterial(reward.material());
+        if (material == null || material.isAir()) {
+            material = Material.PAPER;
+        }
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(messages.component(player.getUniqueId(), "reward-preview-name", messages.placeholder("reward", reward.displayName())));
+            List<Component> lore = new ArrayList<>();
+            if (reward.rarityId() != null && !reward.rarityId().isBlank() && crate.rarities() != null) {
+                for (RarityTierSettings tier : crate.rarities()) {
+                    if (tier.id != null && tier.id.equalsIgnoreCase(reward.rarityId())) {
+                        lore.add(messages.parse(tier.color + tier.displayName));
+                        break;
+                    }
+                }
+            }
+            lore.add(messages.component(player.getUniqueId(), "reward-preview-chance", messages.placeholder("chance", formatChance(chancePercent))));
+            lore.add(messages.component(player.getUniqueId(), "reward-preview-id", messages.placeholder("id", reward.id())));
+            meta.lore(lore);
+            if (reward.customModelData() >= 0) {
+                meta.setCustomModelData(reward.customModelData());
+            }
+            if (reward.pityEligible()) {
+                meta.addEnchant(Enchantment.UNBREAKING, 1, true);
+                meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            }
             item.setItemMeta(meta);
         }
         return item;
