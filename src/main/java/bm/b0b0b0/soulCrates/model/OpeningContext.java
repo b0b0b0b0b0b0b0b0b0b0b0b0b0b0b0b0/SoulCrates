@@ -8,6 +8,11 @@ public record OpeningContext(
         String crateId,
         Location crateLocation,
         int keysSpent,
-        boolean preview
+        boolean preview,
+        UUID instanceId
 ) {
+
+    public OpeningContext(UUID playerId, String crateId, Location crateLocation, int keysSpent, boolean preview) {
+        this(playerId, crateId, crateLocation, keysSpent, preview, null);
+    }
 }

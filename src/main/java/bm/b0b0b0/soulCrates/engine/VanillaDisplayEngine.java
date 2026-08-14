@@ -2,6 +2,7 @@ package bm.b0b0b0.soulCrates.engine;
 
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.DisplayEngineKind;
+import bm.b0b0b0.soulCrates.model.DisplayEngineKind;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.BlockFace;
@@ -34,6 +35,10 @@ public final class VanillaDisplayEngine implements DisplayEngine {
     public static boolean usesExistingBlock(CrateDefinition crateDefinition, Location location) {
         if (location.getWorld() == null) {
             return false;
+        }
+        if (crateDefinition.engineKind() == DisplayEngineKind.VANILLA_BLOCK) {
+            Material blockType = location.getBlock().getType();
+            return !blockType.isAir();
         }
         Material material = crateDefinition.blockMaterial();
         if (material == null || material.isAir()) {

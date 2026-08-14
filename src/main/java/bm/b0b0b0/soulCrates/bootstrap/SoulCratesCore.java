@@ -18,6 +18,8 @@ import bm.b0b0b0.soulCrates.listener.CrateBlockProtectListener;
 import bm.b0b0b0.soulCrates.listener.CrateChunkListener;
 import bm.b0b0b0.soulCrates.listener.CrateInteractListener;
 import bm.b0b0b0.soulCrates.listener.LootBoxListener;
+import bm.b0b0b0.soulCrates.listener.PhysicalCrateListener;
+import bm.b0b0b0.soulCrates.listener.ShulkerPickListener;
 import bm.b0b0b0.soulCrates.listener.NpcInteractListener;
 import bm.b0b0b0.soulCrates.listener.PlayerJoinListener;
 import bm.b0b0b0.soulCrates.redis.RedisPlayerMirror;
@@ -29,6 +31,7 @@ import bm.b0b0b0.soulCrates.service.hologram.CrateHologramService;
 import bm.b0b0b0.soulCrates.service.idle.IdleCrateDisplayService;
 import bm.b0b0b0.soulCrates.service.idle.IdleParticleService;
 import bm.b0b0b0.soulCrates.service.lootbox.LootBoxService;
+import bm.b0b0b0.soulCrates.service.physical.PhysicalCrateService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
 import bm.b0b0b0.soulCrates.service.npc.CrateNpcService;
@@ -74,6 +77,7 @@ public final class SoulCratesCore {
     private ClaimService claimService;
     private LastWinnerService lastWinnerService;
     private LootBoxService lootBoxService;
+    private PhysicalCrateService physicalCrateService;
     private RedisPlayerMirror redisMirror;
     private RerollService rerollService;
     private CrateInteractListener crateInteractListener;
@@ -151,6 +155,9 @@ public final class SoulCratesCore {
         claimService = new ClaimService(repository, rewardDeliveryService, pluginConfig.cratesSettings().claim);
         lastWinnerService = new LastWinnerService(repository, pluginConfig.cratesSettings().lastWinner);
         lootBoxService = new LootBoxService(plugin, messageService);
+        physicalCrateService = new PhysicalCrateService(plugin, messageService, repository);
+        physicalCrateService.applySettings(pluginConfig.cratesSettings().physicalCrates);
+        physicalCrateService.loadCache();
         bulkOpenService = new BulkOpenService(
                 rewardRollService,
                 new PityService(repository),
@@ -223,7 +230,8 @@ public final class SoulCratesCore {
                     rewardDeliveryService,
                     displayEngineRegistry,
                     phaseFactory,
-                    hookRegistry
+                    hookRegistry,
+                    physicalCrateService
             );
             for (String crateId : crateIds) {
                 lastWinnerService.preload(crateId);
@@ -232,6 +240,7 @@ public final class SoulCratesCore {
             crateInteractListener = new CrateInteractListener(
                     crateService,
                     locationService,
+                    physicalCrateService,
                     pluginConfig.cratesSettings().idleDisplay
             );
             crateBlockProtectListener = new CrateBlockProtectListener(
@@ -243,6 +252,11 @@ public final class SoulCratesCore {
             );
             plugin.getServer().getPluginManager().registerEvents(crateInteractListener, plugin);
             plugin.getServer().getPluginManager().registerEvents(crateBlockProtectListener, plugin);
+            plugin.getServer().getPluginManager().registerEvents(
+                    new PhysicalCrateListener(plugin, messageService, crateRegistry, physicalCrateService),
+                    plugin
+            );
+            plugin.getServer().getPluginManager().registerEvents(new ShulkerPickListener(), plugin);
             plugin.getServer().getPluginManager().registerEvents(new NpcInteractListener(crateService, npcService), plugin);
             plugin.getServer().getPluginManager().registerEvents(new LootBoxListener(crateService, lootBoxService), plugin);
             plugin.getServer().getPluginManager().registerEvents(new PlayerJoinListener(plugin, playerDataService, claimService, crateRegistry), plugin);
@@ -273,6 +287,9 @@ public final class SoulCratesCore {
         }
         if (keyShopService != null) {
             keyShopService.applySettings(pluginConfig.cratesSettings().shop);
+        }
+        if (physicalCrateService != null) {
+            physicalCrateService.applySettings(pluginConfig.cratesSettings().physicalCrates);
         }
         crateService.applyConfig(pluginConfig);
         if (crateInteractListener != null) {

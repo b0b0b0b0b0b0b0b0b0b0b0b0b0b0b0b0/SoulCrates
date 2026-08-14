@@ -1,8 +1,10 @@
 package bm.b0b0b0.soulCrates.listener;
 
 import bm.b0b0b0.soulCrates.config.settings.IdleDisplaySettings;
+import bm.b0b0b0.soulCrates.model.CrateInstance;
 import bm.b0b0b0.soulCrates.service.CrateService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
+import bm.b0b0b0.soulCrates.service.physical.PhysicalCrateService;
 import java.util.Optional;
 import org.bukkit.Location;
 import org.bukkit.Sound;
@@ -20,15 +22,18 @@ public final class CrateInteractListener implements Listener {
 
     private final CrateService crateService;
     private final CrateLocationService locationService;
+    private final PhysicalCrateService physicalCrateService;
     private IdleDisplaySettings idleSettings;
 
     public CrateInteractListener(
             CrateService crateService,
             CrateLocationService locationService,
+            PhysicalCrateService physicalCrateService,
             IdleDisplaySettings idleSettings
     ) {
         this.crateService = crateService;
         this.locationService = locationService;
+        this.physicalCrateService = physicalCrateService;
         this.idleSettings = idleSettings;
     }
 
@@ -58,21 +63,33 @@ public final class CrateInteractListener implements Listener {
     }
 
     private void openAt(org.bukkit.event.player.PlayerEvent event, Location blockLocation) {
+        if (physicalCrateService != null && physicalCrateService.enabled()) {
+            Optional<CrateInstance> instance = physicalCrateService.findAt(blockLocation);
+            if (instance.isPresent()) {
+                cancelInteract(event);
+                crateService.openPlacedCrate(event.getPlayer(), instance.get(), blockLocation);
+                return;
+            }
+        }
         Optional<String> crateId = locationService.findCrateId(blockLocation);
         if (crateId.isEmpty()) {
             return;
         }
-        if (event instanceof PlayerInteractEvent interactEvent) {
-            interactEvent.setCancelled(true);
-        } else if (event instanceof PlayerInteractEntityEvent entityEvent) {
-            entityEvent.setCancelled(true);
-        }
+        cancelInteract(event);
         if (event.getPlayer().isSneaking()) {
             crateService.openPreview(event.getPlayer(), crateId.get(), blockLocation);
             return;
         }
         playInteractSound(blockLocation.getBlock());
         crateService.beginOpen(event.getPlayer(), crateId.get(), blockLocation);
+    }
+
+    private void cancelInteract(org.bukkit.event.player.PlayerEvent event) {
+        if (event instanceof PlayerInteractEvent interactEvent) {
+            interactEvent.setCancelled(true);
+        } else if (event instanceof PlayerInteractEntityEvent entityEvent) {
+            entityEvent.setCancelled(true);
+        }
     }
 
     private void playInteractSound(Block block) {

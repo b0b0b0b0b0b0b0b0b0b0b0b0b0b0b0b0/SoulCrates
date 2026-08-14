@@ -9,6 +9,7 @@ import bm.b0b0b0.soulCrates.model.OpeningSessionState;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.model.RewardRollResult;
 import java.util.UUID;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -25,6 +26,7 @@ public final class CrateOpeningSession implements OpeningSession {
     private Runnable onFinish;
     private Runnable onCancel;
     private int rerollsUsed;
+    private boolean suppressCancelMessage;
 
     public CrateOpeningSession(
             UUID sessionId,
@@ -92,6 +94,14 @@ public final class CrateOpeningSession implements OpeningSession {
         this.onCancel = onCancel;
     }
 
+    public void setSuppressCancelMessage(boolean suppressCancelMessage) {
+        this.suppressCancelMessage = suppressCancelMessage;
+    }
+
+    public boolean suppressCancelMessage() {
+        return suppressCancelMessage;
+    }
+
     public void markAnimating() {
         state = OpeningSessionState.ANIMATING;
     }
@@ -121,7 +131,8 @@ public final class CrateOpeningSession implements OpeningSession {
 
     public void unload() {
         if (animationPipeline != null) {
-            animationPipeline.unload();
+            Player player = Bukkit.getPlayer(context.playerId());
+            animationPipeline.unload(player, this);
             animationPipeline = null;
         }
         if (displayComponent != null) {

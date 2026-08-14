@@ -9,15 +9,16 @@ public final class AnimationSettings extends YamlSerializable {
 
     @Comment({
             @CommentValue("Preset replaces first/second/third below when set. Leave empty to tune phases manually."),
-            @CommentValue("SHOWCASE — crack intro, world BlockDisplay roulette (recommended), firework reveal."),
-            @CommentValue("CLASSIC — soft particles, swirl spin, calm finish."),
-            @CommentValue("BLAZING — fire blast, fast orange roulette, firework."),
-            @CommentValue("KEYSTORM — key insert VFX, purple roulette, helix reveal."),
-            @CommentValue("CSGO_STYLE — fire intro, green roulette (world ring, not GUI), firework."),
-            @CommentValue("FIREWORKS — short intro, warm roulette, red firework finale."),
-            @CommentValue("ARCADE — cyan crack, purple roulette, green firework."),
-            @CommentValue("BOUNCY — light intro, bouncing ball spin (particles), soft finish."),
-            @CommentValue("NONE — instant open, no animation."),
+            @CommentValue("SHOWCASE — world BlockDisplay ring (vertical), crack intro, firework."),
+            @CommentValue("CLASSIC — particle swirl only, no GUI and no block ring."),
+            @CommentValue("BLAZING — flame column / lava burst, no ring."),
+            @CommentValue("KEYSTORM — key VFX, horizontal block ring, helix reveal."),
+            @CommentValue("CSGO_STYLE — inventory GUI spinner (csgo_gui), not world ring."),
+            @CommentValue("FIREWORKS — bouncing dust ball, long firework finale."),
+            @CommentValue("ARCADE — rising helix spiral particles, firework."),
+            @CommentValue("BOUNCY — bouncing particle ball in world, no ring."),
+            @CommentValue("SHULKER_PICK — shulker boxes on ground around player, hop pick, reveal losses."),
+            @CommentValue("NONE — instant open."),
     })
     public String preset = "SHOWCASE";
 

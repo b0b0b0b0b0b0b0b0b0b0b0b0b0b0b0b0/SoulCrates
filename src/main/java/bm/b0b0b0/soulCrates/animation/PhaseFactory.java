@@ -92,6 +92,15 @@ public final class PhaseFactory {
                     settings
             );
         }
+        if (isShulkerPickType(type)) {
+            return new ShulkerPickPhase(
+                    messageService,
+                    broadcastService,
+                    crateDefinition,
+                    rolledReward,
+                    settings
+            );
+        }
         return switch (type) {
             case "none" -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.NONE, settings, rolledReward);
             case "swirl" -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.SWIRL, settings, rolledReward);
@@ -135,6 +144,13 @@ public final class PhaseFactory {
                 || "display".equals(type);
     }
 
+    private static boolean isShulkerPickType(String type) {
+        return "shulker_pick".equals(type)
+                || "shulker".equals(type)
+                || "ground_pick".equals(type)
+                || "mystery_shulkers".equals(type);
+    }
+
     private static String normalizeType(String raw) {
         if (raw == null || raw.isBlank()) {
             return "default";
@@ -145,7 +161,7 @@ public final class PhaseFactory {
     private static String mapModelEngineAnimation(String type) {
         return switch (type) {
             case "key_opener", "key_insert", "crack", "lightning", "fire" -> "pre-open";
-            case "csgo", "csgo_gui", "spinner", "swirl", "ball", "carousel" -> "open";
+            case "csgo", "csgo_gui", "spinner", "swirl", "ball", "carousel", "shulker_pick", "shulker", "ground_pick", "mystery_shulkers" -> "open";
             case "firework", "helix", "reveal", "default" -> "display";
             case "none" -> "idle";
             default -> type;

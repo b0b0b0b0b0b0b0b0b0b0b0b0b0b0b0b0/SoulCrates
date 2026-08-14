@@ -5,16 +5,19 @@ import bm.b0b0b0.soulCrates.config.PluginConfig;
 import bm.b0b0b0.soulCrates.config.settings.CrateDefinitionSettings;
 import bm.b0b0b0.soulCrates.gui.CrateClaimMenu;
 import bm.b0b0b0.soulCrates.gui.CratePreviewMenu;
+import bm.b0b0b0.soulCrates.gui.PlacedCrateMenu;
 import bm.b0b0b0.soulCrates.gui.KeyShopMenu;
 import bm.b0b0b0.soulCrates.gui.VirtualKeysMenu;
 import bm.b0b0b0.soulCrates.gui.editor.CrateEditorListMenu;
 import bm.b0b0b0.soulCrates.gui.editor.CrateEditorMenu;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
+import bm.b0b0b0.soulCrates.model.CrateInstance;
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
 import bm.b0b0b0.soulCrates.service.claim.ClaimService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.service.open.CrateOpenCallbacks;
+import bm.b0b0b0.soulCrates.service.physical.PhysicalCrateService;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
 import bm.b0b0b0.soulCrates.service.shop.KeyShopService;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
@@ -34,6 +37,7 @@ public final class CrateMenuService {
     private final KeyShopService keyShopService;
     private final ClaimService claimService;
     private final KeyService keyService;
+    private final PhysicalCrateService physicalCrateService;
     private final CrateOpenCallbacks openCallbacks;
     private final Consumer<PluginConfig> configApplier;
     private PluginConfig pluginConfig;
@@ -48,6 +52,7 @@ public final class CrateMenuService {
             KeyShopService keyShopService,
             ClaimService claimService,
             KeyService keyService,
+            PhysicalCrateService physicalCrateService,
             CrateOpenCallbacks openCallbacks,
             Consumer<PluginConfig> configApplier
     ) {
@@ -60,6 +65,7 @@ public final class CrateMenuService {
         this.keyShopService = keyShopService;
         this.claimService = claimService;
         this.keyService = keyService;
+        this.physicalCrateService = physicalCrateService;
         this.openCallbacks = openCallbacks;
         this.configApplier = configApplier;
     }
@@ -88,6 +94,33 @@ public final class CrateMenuService {
                 crate,
                 rewardRollService,
                 (target, amount) -> openCallbacks.proceedOpenFlow(target, crate, resolved, amount),
+                null
+        );
+        PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));
+    }
+
+    public void openPlacedCrate(Player player, CrateInstance instance, Location openLocation) {
+        Optional<CrateDefinition> crateOptional = crateRegistry.find(instance.crateId());
+        if (crateOptional.isEmpty()) {
+            messageService.send(player.getUniqueId(), "crate-not-found", messageService.placeholder("crate", instance.crateId()));
+            return;
+        }
+        CrateDefinition crate = crateOptional.get();
+        Location resolved = openLocation == null ? player.getLocation() : openLocation.getBlock().getLocation();
+        PlacedCrateMenu menu = new PlacedCrateMenu(
+                player.getUniqueId(),
+                messageService,
+                pluginConfig.guiPreviewSettings(),
+                crate,
+                instance,
+                resolved,
+                rewardRollService,
+                (target, instanceId) -> openCallbacks.beginPhysicalCrateOpen(target, instanceId, resolved),
+                () -> {
+                    if (physicalCrateService != null) {
+                        physicalCrateService.returnPlacedCrate(player, crate, instance, resolved);
+                    }
+                },
                 null
         );
         PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));

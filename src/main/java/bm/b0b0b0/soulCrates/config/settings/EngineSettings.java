@@ -9,7 +9,7 @@ public final class EngineSettings extends YamlSerializable {
     @Comment({
             @CommentValue("VANILLA_BLOCK, VANILLA_DISPLAY, or MODEL_ENGINE"),
     })
-    public String type = "VANILLA_DISPLAY";
+    public String type = "VANILLA_BLOCK";
 
     @Comment({
             @CommentValue("Block material when engine uses blocks or display entities."),

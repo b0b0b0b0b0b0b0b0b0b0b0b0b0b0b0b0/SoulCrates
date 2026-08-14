@@ -19,7 +19,7 @@ import org.bukkit.entity.Player;
 public final class CratesCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> ROOT_SUBCOMMANDS = List.of(
-            "open", "preview", "claim", "editor", "reload", "givekey", "givelootbox", "setcrate", "setnpc", "keys", "stats", "locations", "shop", "virtualkeys", "paykey"
+            "open", "preview", "claim", "editor", "reload", "givekey", "givecrate", "givelootbox", "setcrate", "setnpc", "keys", "stats", "locations", "shop", "virtualkeys", "paykey"
     );
 
     private final SoulCratesCore core;
@@ -43,6 +43,7 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
             case "shop" -> handleShop(sender, messages);
             case "claim" -> handleClaim(sender, messages, args);
             case "givelootbox" -> handleGiveLootBox(sender, messages, args);
+            case "givecrate" -> handleGiveCrate(sender, messages, args);
             case "givekey" -> handleGiveKey(sender, messages, args);
             case "setcrate" -> handleSetCrate(sender, messages, args);
             case "setnpc" -> handleSetNpc(sender, messages, args);
@@ -64,7 +65,7 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 2) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "givekey", "givelootbox", "paykey" -> onlinePlayerNames(args[1]);
+                case "givekey", "givecrate", "givelootbox", "paykey" -> onlinePlayerNames(args[1]);
                 case "stats" -> sender.hasPermission("soulcrates.command.stats.others")
                         ? onlinePlayerNames(args[1])
                         : List.of();
@@ -82,7 +83,7 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 3) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "givekey", "givelootbox", "paykey" -> crateIds(args[2]);
+                case "givekey", "givecrate", "givelootbox", "paykey" -> crateIds(args[2]);
                 case "open" -> amountSuggestions(args[2]);
                 case "setcrate" -> {
                     if ("remove".equalsIgnoreCase(args[1])) {
@@ -96,13 +97,18 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
         if (args.length == 4) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "givekey" -> giveKeyAmountSuggestions(args[3]);
+                case "givecrate" -> giveCrateFourthArgSuggestions(args[3]);
                 case "givelootbox" -> amountSuggestions(args[3]);
                 case "paykey" -> amountSuggestions(args[3]);
                 default -> List.of();
             };
         }
-        if (args.length == 5 && "givekey".equalsIgnoreCase(args[0])) {
-            return giveKeyAmountSuggestions(args[4]);
+        if (args.length == 5) {
+            return switch (args[0].toLowerCase(Locale.ROOT)) {
+                case "givekey" -> giveKeyAmountSuggestions(args[4]);
+                case "givecrate" -> giveCrateFifthArgSuggestions(args[3], args[4]);
+                default -> List.of();
+            };
         }
         return List.of();
     }
@@ -211,6 +217,70 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
         int amount = args.length >= 4 ? parseAmount(args[3]) : 1;
         core.crateService().giveLootBox(sender, target, args[2], amount);
         return true;
+    }
+
+    private boolean handleGiveCrate(CommandSender sender, MessageService messages, String[] args) {
+        if (!sender.hasPermission("soulcrates.command.givecrate")) {
+            messages.send(sender, "no-permission");
+            return true;
+        }
+        if (!CommandGuard.requireLoaded(core.crateService(), sender, messages)) {
+            return true;
+        }
+        if (args.length < 3) {
+            return false;
+        }
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            messages.send(sender, "player-not-found");
+            return true;
+        }
+        int amount = 1;
+        String preset = null;
+        if (args.length >= 4) {
+            if (looksLikeAmount(args[3])) {
+                amount = parseAmount(args[3]);
+                if (args.length >= 5) {
+                    preset = args[4];
+                }
+            } else {
+                preset = args[3];
+                if (args.length >= 5) {
+                    amount = parseAmount(args[4]);
+                }
+            }
+        }
+        core.crateService().givePhysicalCrate(sender, target, args[2], amount, preset);
+        return true;
+    }
+
+    private static boolean looksLikeAmount(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        for (int index = 0; index < raw.length(); index++) {
+            if (!Character.isDigit(raw.charAt(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private List<String> giveCrateFourthArgSuggestions(String partial) {
+        List<String> options = new ArrayList<>(amountSuggestions(partial));
+        options.addAll(AnimationPresetRegistry.presetIds().stream()
+                .filter(id -> id.toLowerCase(Locale.ROOT).startsWith(partial.toLowerCase(Locale.ROOT)))
+                .toList());
+        return options;
+    }
+
+    private List<String> giveCrateFifthArgSuggestions(String arg3, String partial) {
+        if (looksLikeAmount(arg3)) {
+            return AnimationPresetRegistry.presetIds().stream()
+                    .filter(id -> id.toLowerCase(Locale.ROOT).startsWith(partial.toLowerCase(Locale.ROOT)))
+                    .toList();
+        }
+        return amountSuggestions(partial);
     }
 
     private boolean handleGiveKey(CommandSender sender, MessageService messages, String[] args) {

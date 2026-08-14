@@ -60,6 +60,9 @@ public final class CratesSettings extends YamlSerializable {
     })
     public RedisSettings redis = new RedisSettings();
 
+    @NewLine
+    public PhysicalCrateSettings physicalCrates = new PhysicalCrateSettings();
+
     @Comment({
             @CommentValue("Permission node prefix for crate-specific nodes."),
     })

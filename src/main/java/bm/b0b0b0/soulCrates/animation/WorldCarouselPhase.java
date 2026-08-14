@@ -41,6 +41,12 @@ public final class WorldCarouselPhase implements PhaseRunner {
     private static final int LOCK_DURATION = 30;
     private static final int COLLAPSE_DURATION = 40;
     private static final double POINTER_ANGLE = Math.PI / 2.0;
+    private static final double CENTER_TICK_EPS = 0.048;
+    private static final double CENTER_HIGHLIGHT_EPS = 0.11;
+    private static final double POINTER_RING_GAP = 0.55;
+    private static final double POINTER_PLAYER_PULL = 0.28;
+    private static final float DIAMOND_TWIST = (float) (Math.PI / 4.0);
+    private static final float DIAMOND_LEAN = (float) (Math.PI / 10.0);
 
     private enum Stage {
         SPINNING,
@@ -93,6 +99,7 @@ public final class WorldCarouselPhase implements PhaseRunner {
     private Location winnerAnchor;
     private Vector right;
     private Vector up;
+    private Vector towardPlayer;
     private double ringAngle;
     private double angularVelocity;
     private double targetRingAngle;
@@ -191,10 +198,13 @@ public final class WorldCarouselPhase implements PhaseRunner {
 
     private void tickSpinning(Player player) {
         ringAngle += angularVelocity;
-        int pointer = pointerSlot();
-        if (pointer != lastPointerSlot) {
-            lastPointerSlot = pointer;
+        int nearest = nearestSlot();
+        double centerError = slotCenterError(nearest);
+        if (centerError < CENTER_TICK_EPS && lastPointerSlot != nearest) {
+            lastPointerSlot = nearest;
             playSpinTick();
+        } else if (centerError > CENTER_HIGHLIGHT_EPS * 1.35) {
+            lastPointerSlot = -1;
         }
         angularVelocity = resolveAngularVelocity();
         updateSuspense(player);
@@ -255,14 +265,14 @@ public final class WorldCarouselPhase implements PhaseRunner {
             float startScale = index == lockedPointerSlot ? WINNER_SCALE : BLOCK_SCALE;
             if (index == lockedPointerSlot) {
                 float scale = lerp(startScale, 0.78f, collapseProgress);
-                applyBlockScale(slot.block, scale);
+                applyBlockTransform(slot.block, scale, index);
                 slot.block.teleport(lerpLocation(start, target, collapseProgress));
                 if (slot.label != null && !slot.label.isDead()) {
                     slot.label.teleport(lerpLocation(start.clone().add(0.0, LABEL_OFFSET_Y, 0.0), target.clone().add(0.0, LABEL_OFFSET_Y, 0.0), collapseProgress));
                 }
             } else {
                 float scale = lerp(startScale, 0.02f, collapseProgress);
-                applyBlockScale(slot.block, scale);
+                applyBlockTransform(slot.block, scale, index);
                 slot.block.teleport(lerpLocation(start, target, collapseProgress));
                 if (slot.label != null && !slot.label.isDead()) {
                     if (collapseProgress > 0.35f) {
@@ -310,29 +320,46 @@ public final class WorldCarouselPhase implements PhaseRunner {
     }
 
     private int rewardIndexUnderPointerAt(double angle) {
-        return Math.floorMod(pointerSlotAt(angle), pool.size());
+        double step = slotStepAngle();
+        int slot = Math.floorMod(Math.round(-angle / step), RING_SLOTS);
+        return Math.floorMod(slot, pool.size());
     }
 
     private int pointerSlotAt(double angle) {
-        if (isHorizontalLine()) {
-            return Math.floorMod(Math.round(-angle / slotStepAngle()), RING_SLOTS);
-        }
-        double slotStep = slotStepAngle();
-        int bestSlot = 0;
-        double bestDistance = Double.MAX_VALUE;
-        for (int slot = 0; slot < RING_SLOTS; slot++) {
-            double slotAngle = angle + slot * slotStep + POINTER_ANGLE;
-            double distance = angularDistance(slotAngle, POINTER_ANGLE);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                bestSlot = slot;
-            }
-        }
-        return bestSlot;
+        return Math.floorMod(Math.round(-angle / slotStepAngle()), RING_SLOTS);
     }
 
     private int pointerSlot() {
-        return pointerSlotAt(ringAngle);
+        if (locked) {
+            return lockedPointerSlot;
+        }
+        int nearest = nearestSlot();
+        if (slotCenterError(nearest) <= CENTER_HIGHLIGHT_EPS) {
+            return nearest;
+        }
+        return -1;
+    }
+
+    private int nearestSlot() {
+        int best = 0;
+        double bestError = Double.MAX_VALUE;
+        double step = slotStepAngle();
+        for (int slot = 0; slot < RING_SLOTS; slot++) {
+            double error = slotCenterError(slot, step);
+            if (error < bestError) {
+                bestError = error;
+                best = slot;
+            }
+        }
+        return best;
+    }
+
+    private double slotCenterError(int slot) {
+        return slotCenterError(slot, slotStepAngle());
+    }
+
+    private double slotCenterError(int slot, double step) {
+        return angularDistance(ringAngle + slot * step, 0.0);
     }
 
     private RewardDefinition rewardAtSlot(int slot) {
@@ -392,6 +419,7 @@ public final class WorldCarouselPhase implements PhaseRunner {
             face.normalize();
         }
         right = new Vector(-face.getZ(), 0.0, face.getX()).normalize();
+        towardPlayer = new Vector(right.getZ(), 0.0, -right.getX()).normalize();
         up = new Vector(0.0, 1.0, 0.0);
         if (isHorizontalLine()) {
             up = new Vector(0.0, 0.12, 0.0);
@@ -410,14 +438,15 @@ public final class WorldCarouselPhase implements PhaseRunner {
             return;
         }
         for (int index = 0; index < RING_SLOTS; index++) {
-            Location spawnLocation = slotLocation(index, BLOCK_SCALE);
+            int slotIndex = index;
+            Location spawnLocation = slotLocation(slotIndex, BLOCK_SCALE);
             BlockDisplay block = world.spawn(spawnLocation, BlockDisplay.class, entity -> {
                 entity.setBlock(Material.PURPLE_CONCRETE.createBlockData());
                 entity.setBillboard(Display.Billboard.FIXED);
                 entity.setPersistent(false);
                 entity.setViewRange(80.0f);
                 entity.setBrightness(new Display.Brightness(15, 15));
-                applyBlockScale(entity, BLOCK_SCALE);
+                applyBlockTransform(entity, BLOCK_SCALE, slotIndex);
             });
             Location labelLocation = spawnLocation.clone().add(0.0, LABEL_OFFSET_Y, 0.0);
             TextDisplay label = world.spawn(labelLocation, TextDisplay.class, entity -> {
@@ -453,7 +482,11 @@ public final class WorldCarouselPhase implements PhaseRunner {
     }
 
     private Location pointerLocation() {
-        return anchor.clone().add(up.clone().multiply(RING_RADIUS + 0.52));
+        Location location = anchor.clone().add(up.clone().multiply(RING_RADIUS + POINTER_RING_GAP));
+        if (towardPlayer != null && !isHorizontalLine()) {
+            location.add(towardPlayer.clone().multiply(POINTER_PLAYER_PULL));
+        }
+        return location;
     }
 
     private void updatePointer() {
@@ -471,13 +504,13 @@ public final class WorldCarouselPhase implements PhaseRunner {
                 continue;
             }
             RewardDefinition reward = rewardAtSlot(index);
-            boolean underPointer = index == pointer;
+            boolean underPointer = pointer >= 0 && index == pointer;
             float scale = underPointer ? (locked ? WINNER_SCALE : POINTER_SCALE) : BLOCK_SCALE;
             Location blockLocation = slotLocation(index, scale);
             slot.block.setBlock(rewardBlock(reward));
             slot.block.setGlowColorOverride(rewardColor(reward));
             slot.block.setGlowing(underPointer || isRare(reward));
-            applyBlockScale(slot.block, scale);
+            applyBlockTransform(slot.block, scale, index);
             slot.block.teleport(blockLocation);
             if (slot.label != null && !slot.label.isDead()) {
                 slot.label.text(rewardLabel(player, reward, underPointer));
@@ -500,7 +533,8 @@ public final class WorldCarouselPhase implements PhaseRunner {
     private void lockWinner(Player player) {
         locked = true;
         angularVelocity = 0.0;
-        lockedPointerSlot = pointerSlot();
+        lockedPointerSlot = nearestSlot();
+        lastPointerSlot = lockedPointerSlot;
         refreshRing(player);
         World world = anchor.getWorld();
         if (world != null) {
@@ -700,6 +734,9 @@ public final class WorldCarouselPhase implements PhaseRunner {
         AnimationPhaseProperties properties = settings.properties == null ? new AnimationPhaseProperties() : settings.properties;
         org.bukkit.Color trail = ParticleEffectUtil.parseBukkitColor(properties.color, org.bukkit.Color.fromRGB(85, 255, 85));
         int pointer = locked ? lockedPointerSlot : pointerSlot();
+        if (pointer < 0 || pointer >= slots.size()) {
+            return;
+        }
         RingSlot slot = slots.get(pointer);
         if (slot.block == null || slot.block.isDead()) {
             return;
@@ -787,12 +824,27 @@ public final class WorldCarouselPhase implements PhaseRunner {
                 || rarity.contains("vip");
     }
 
-    private static void applyBlockScale(BlockDisplay display, float scale) {
+    private void applyBlockTransform(BlockDisplay display, float scale, int slotIndex) {
+        AxisAngle4f leftRotation;
+        AxisAngle4f rightRotation = new AxisAngle4f(0.0f, 0.0f, 1.0f, 0.0f);
+        if (isHorizontalLine()) {
+            leftRotation = new AxisAngle4f(DIAMOND_TWIST, 0.0f, 1.0f, 0.0f);
+        } else {
+            double slotAngle = ringAngle + slotIndex * slotStepAngle() + POINTER_ANGLE;
+            float radialX = (float) (Math.cos(slotAngle) * right.getX() + Math.sin(slotAngle) * up.getX());
+            float radialY = (float) (Math.cos(slotAngle) * right.getY() + Math.sin(slotAngle) * up.getY());
+            float radialZ = (float) (Math.cos(slotAngle) * right.getZ() + Math.sin(slotAngle) * up.getZ());
+            float tangentX = (float) (-Math.sin(slotAngle) * right.getX() + Math.cos(slotAngle) * up.getX());
+            float tangentY = (float) (-Math.sin(slotAngle) * right.getY() + Math.cos(slotAngle) * up.getY());
+            float tangentZ = (float) (-Math.sin(slotAngle) * right.getZ() + Math.cos(slotAngle) * up.getZ());
+            leftRotation = new AxisAngle4f(DIAMOND_TWIST, tangentX, tangentY, tangentZ);
+            rightRotation = new AxisAngle4f(DIAMOND_LEAN, radialX, radialY, radialZ);
+        }
         display.setTransformation(new Transformation(
                 new Vector3f(0.0f, 0.0f, 0.0f),
-                new AxisAngle4f(0.0f, 0.0f, 1.0f, 0.0f),
+                leftRotation,
                 new Vector3f(scale, scale, scale),
-                new AxisAngle4f(0.0f, 0.0f, 1.0f, 0.0f)
+                rightRotation
         ));
     }
 

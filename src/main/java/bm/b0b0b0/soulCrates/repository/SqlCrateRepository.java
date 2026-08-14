@@ -7,6 +7,8 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import bm.b0b0b0.soulCrates.model.CrateInstance;
+import bm.b0b0b0.soulCrates.model.CrateInstanceState;
 import bm.b0b0b0.soulCrates.model.PendingClaim;
 import bm.b0b0b0.soulCrates.model.RewardWinStats;
 import bm.b0b0b0.soulCrates.model.WinnerEntry;
@@ -14,6 +16,7 @@ import bm.b0b0b0.soulCrates.util.RewardSnapshotCodec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -158,6 +161,24 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
                     PRIMARY KEY (crate_id, reward_id)
                 )
                 """);
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS soulcrates_instances (
+                    instance_id TEXT NOT NULL PRIMARY KEY,
+                    crate_id TEXT NOT NULL,
+                    owner_uuid TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    world TEXT,
+                    x INTEGER,
+                    y INTEGER,
+                    z INTEGER,
+                    created_at INTEGER NOT NULL,
+                    consumed_at INTEGER
+                )
+                """);
+        statement.execute("""
+                CREATE INDEX IF NOT EXISTS idx_soulcrates_instances_location
+                ON soulcrates_instances (world, x, y, z)
+                """);
     }
 
     private void migrateMysql(Statement statement) throws SQLException {
@@ -249,6 +270,21 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
                     wins INT NOT NULL DEFAULT 0,
                     last_win_at BIGINT NOT NULL DEFAULT 0,
                     PRIMARY KEY (crate_id, reward_id)
+                )
+                """);
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS soulcrates_instances (
+                    instance_id VARCHAR(36) NOT NULL PRIMARY KEY,
+                    crate_id VARCHAR(64) NOT NULL,
+                    owner_uuid VARCHAR(36) NOT NULL,
+                    state VARCHAR(16) NOT NULL,
+                    world VARCHAR(64),
+                    x INT,
+                    y INT,
+                    z INT,
+                    created_at BIGINT NOT NULL,
+                    consumed_at BIGINT,
+                    INDEX idx_instances_location (world, x, y, z)
                 )
                 """);
     }
@@ -769,6 +805,222 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
             }
             return RewardWinStats.empty();
         }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Void> createInstance(UUID instanceId, String crateId, UUID ownerId, long createdAt) {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "INSERT INTO soulcrates_instances (instance_id, crate_id, owner_uuid, state, created_at) VALUES (?, ?, ?, ?, ?)")) {
+                statement.setString(1, instanceId.toString());
+                statement.setString(2, crateId.toLowerCase());
+                statement.setString(3, ownerId.toString());
+                statement.setString(4, CrateInstanceState.UNPLACED.name());
+                statement.setLong(5, createdAt);
+                statement.executeUpdate();
+            } catch (SQLException exception) {
+                logger.warning("Failed to create crate instance: " + exception.getMessage());
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Optional<CrateInstance>> findInstance(UUID instanceId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "SELECT instance_id, crate_id, owner_uuid, state, world, x, y, z, created_at FROM soulcrates_instances WHERE instance_id = ?")) {
+                statement.setString(1, instanceId.toString());
+                try (var resultSet = statement.executeQuery()) {
+                    if (resultSet.next()) {
+                        return Optional.of(mapInstance(resultSet));
+                    }
+                }
+            } catch (SQLException exception) {
+                logger.warning("Failed to find crate instance: " + exception.getMessage());
+            }
+            return Optional.empty();
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<List<CrateInstance>> loadPlacedInstances() {
+        return CompletableFuture.supplyAsync(() -> {
+            List<CrateInstance> instances = new ArrayList<>();
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "SELECT instance_id, crate_id, owner_uuid, state, world, x, y, z, created_at FROM soulcrates_instances WHERE state IN (?, ?)")) {
+                statement.setString(1, CrateInstanceState.PLACED.name());
+                statement.setString(2, CrateInstanceState.OPENING.name());
+                try (var resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        instances.add(mapInstance(resultSet));
+                    }
+                }
+            } catch (SQLException exception) {
+                logger.warning("Failed to load placed crate instances: " + exception.getMessage());
+            }
+            return instances;
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> tryPlaceInstance(UUID instanceId, UUID ownerId, Location location) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (location.getWorld() == null) {
+                return false;
+            }
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "UPDATE soulcrates_instances SET state = ?, world = ?, x = ?, y = ?, z = ? "
+                                 + "WHERE instance_id = ? AND owner_uuid = ? AND state = ?")) {
+                statement.setString(1, CrateInstanceState.PLACED.name());
+                statement.setString(2, location.getWorld().getName());
+                statement.setInt(3, location.getBlockX());
+                statement.setInt(4, location.getBlockY());
+                statement.setInt(5, location.getBlockZ());
+                statement.setString(6, instanceId.toString());
+                statement.setString(7, ownerId.toString());
+                statement.setString(8, CrateInstanceState.UNPLACED.name());
+                return statement.executeUpdate() > 0;
+            } catch (SQLException exception) {
+                logger.warning("Failed to place crate instance: " + exception.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> tryBeginInstanceOpen(UUID instanceId, UUID playerId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "UPDATE soulcrates_instances SET state = ? WHERE instance_id = ? AND owner_uuid = ? AND state = ?")) {
+                statement.setString(1, CrateInstanceState.OPENING.name());
+                statement.setString(2, instanceId.toString());
+                statement.setString(3, playerId.toString());
+                statement.setString(4, CrateInstanceState.PLACED.name());
+                return statement.executeUpdate() > 0;
+            } catch (SQLException exception) {
+                logger.warning("Failed to begin crate instance open: " + exception.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> tryFinishInstanceOpen(UUID instanceId) {
+        return CompletableFuture.supplyAsync(() -> {
+            long now = System.currentTimeMillis();
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "UPDATE soulcrates_instances SET state = ?, consumed_at = ? WHERE instance_id = ? AND state = ?")) {
+                statement.setString(1, CrateInstanceState.CONSUMED.name());
+                statement.setLong(2, now);
+                statement.setString(3, instanceId.toString());
+                statement.setString(4, CrateInstanceState.OPENING.name());
+                return statement.executeUpdate() > 0;
+            } catch (SQLException exception) {
+                logger.warning("Failed to finish crate instance open: " + exception.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> tryCancelInstanceOpen(UUID instanceId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "UPDATE soulcrates_instances SET state = ? WHERE instance_id = ? AND state = ?")) {
+                statement.setString(1, CrateInstanceState.PLACED.name());
+                statement.setString(2, instanceId.toString());
+                statement.setString(3, CrateInstanceState.OPENING.name());
+                return statement.executeUpdate() > 0;
+            } catch (SQLException exception) {
+                logger.warning("Failed to cancel crate instance open: " + exception.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> tryUnplaceInstance(UUID instanceId, UUID playerId, Location location) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (location.getWorld() == null) {
+                return false;
+            }
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "UPDATE soulcrates_instances SET state = ?, world = NULL, x = NULL, y = NULL, z = NULL "
+                                 + "WHERE instance_id = ? AND owner_uuid = ? AND state = ? AND world = ? AND x = ? AND y = ? AND z = ?")) {
+                statement.setString(1, CrateInstanceState.UNPLACED.name());
+                statement.setString(2, instanceId.toString());
+                statement.setString(3, playerId.toString());
+                statement.setString(4, CrateInstanceState.PLACED.name());
+                statement.setString(5, location.getWorld().getName());
+                statement.setInt(6, location.getBlockX());
+                statement.setInt(7, location.getBlockY());
+                statement.setInt(8, location.getBlockZ());
+                return statement.executeUpdate() > 0;
+            } catch (SQLException exception) {
+                logger.warning("Failed to unplace crate instance: " + exception.getMessage());
+                return false;
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Optional<CrateInstance>> findInstanceAt(Location location) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (location.getWorld() == null) {
+                return Optional.empty();
+            }
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "SELECT instance_id, crate_id, owner_uuid, state, world, x, y, z, created_at "
+                                 + "FROM soulcrates_instances WHERE world = ? AND x = ? AND y = ? AND z = ? AND state IN (?, ?)")) {
+                statement.setString(1, location.getWorld().getName());
+                statement.setInt(2, location.getBlockX());
+                statement.setInt(3, location.getBlockY());
+                statement.setInt(4, location.getBlockZ());
+                statement.setString(5, CrateInstanceState.PLACED.name());
+                statement.setString(6, CrateInstanceState.OPENING.name());
+                try (var resultSet = statement.executeQuery()) {
+                    if (resultSet.next()) {
+                        return Optional.of(mapInstance(resultSet));
+                    }
+                }
+            } catch (SQLException exception) {
+                logger.warning("Failed to find crate instance at location: " + exception.getMessage());
+            }
+            return Optional.empty();
+        }, executor);
+    }
+
+    private static CrateInstance mapInstance(java.sql.ResultSet resultSet) throws SQLException {
+        String world = resultSet.getString("world");
+        int x = resultSet.getInt("x");
+        int y = resultSet.getInt("y");
+        int z = resultSet.getInt("z");
+        if (resultSet.wasNull()) {
+            world = null;
+            x = 0;
+            y = 0;
+            z = 0;
+        }
+        return new CrateInstance(
+                UUID.fromString(resultSet.getString("instance_id")),
+                resultSet.getString("crate_id"),
+                UUID.fromString(resultSet.getString("owner_uuid")),
+                CrateInstanceState.valueOf(resultSet.getString("state")),
+                world,
+                x,
+                y,
+                z,
+                resultSet.getLong("created_at")
+        );
     }
 
     @Override

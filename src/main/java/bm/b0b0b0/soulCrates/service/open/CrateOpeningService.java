@@ -18,6 +18,7 @@ import bm.b0b0b0.soulCrates.gui.CrateSelectRewardMenu;
 import bm.b0b0b0.soulCrates.hook.HookRegistry;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
+import bm.b0b0b0.soulCrates.model.CrateInstance;
 import bm.b0b0b0.soulCrates.model.OpeningContext;
 import bm.b0b0b0.soulCrates.model.OpeningSessionState;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
@@ -28,6 +29,7 @@ import bm.b0b0b0.soulCrates.service.idle.IdleCrateDisplayService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
 import bm.b0b0b0.soulCrates.service.lootbox.LootBoxService;
+import bm.b0b0b0.soulCrates.service.physical.PhysicalCrateService;
 import bm.b0b0b0.soulCrates.service.menu.CrateMenuService;
 import bm.b0b0b0.soulCrates.service.reward.DeliveryResult;
 import bm.b0b0b0.soulCrates.service.reward.PityService;
@@ -74,6 +76,7 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
     private final CrateLocationService locationService;
     private final LootBoxService lootBoxService;
     private final CrateAdminService.KeyCountResolver keyCountResolver;
+    private PhysicalCrateService physicalCrateService;
     private PluginConfig pluginConfig;
     private CrateMenuService menuService;
 
@@ -123,6 +126,110 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
 
     public void attachMenuService(CrateMenuService menuService) {
         this.menuService = menuService;
+    }
+
+    public void attachPhysicalCrateService(PhysicalCrateService physicalCrateService) {
+        this.physicalCrateService = physicalCrateService;
+    }
+
+    @Override
+    public void beginPhysicalCrateOpen(Player player, UUID instanceId, Location location) {
+        if (physicalCrateService == null || !physicalCrateService.enabled()) {
+            return;
+        }
+        Optional<CrateInstance> instanceOptional = physicalCrateService.findCached(instanceId);
+        if (instanceOptional.isEmpty()) {
+            messageService.send(player.getUniqueId(), "physical-crate-open-denied");
+            return;
+        }
+        CrateInstance instance = instanceOptional.get();
+        Optional<CrateDefinition> crateOptional = crateRegistry.find(instance.crateId());
+        if (crateOptional.isEmpty()) {
+            messageService.send(player.getUniqueId(), "crate-not-found", messageService.placeholder("crate", instance.crateId()));
+            return;
+        }
+        CrateDefinition crate = crateOptional.get();
+        if (!crate.opening().permission.isBlank() && !player.hasPermission(crate.opening().permission)) {
+            messageService.send(player.getUniqueId(), "no-permission");
+            restorePhysicalCrateAfterOpenFailed(player, crate, instance, normalizePhysicalBlockLocation(location));
+            return;
+        }
+        if (!physicalCrateService.canOpen(player, instance)) {
+            messageService.send(player.getUniqueId(), "physical-crate-open-denied");
+            restorePhysicalCrateAfterOpenFailed(player, crate, instance, normalizePhysicalBlockLocation(location));
+            return;
+        }
+        if (sessionRegistry.isBusy(player.getUniqueId())) {
+            messageService.send(player.getUniqueId(), "open-already");
+            restorePhysicalCrateAfterOpenFailed(player, crate, instance, normalizePhysicalBlockLocation(location));
+            return;
+        }
+        if (!cooldownTracker.check(player, crate)) {
+            restorePhysicalCrateAfterOpenFailed(player, crate, instance, normalizePhysicalBlockLocation(location));
+            return;
+        }
+        Location openLocation = normalizePhysicalBlockLocation(location);
+        physicalCrateService.tryBeginOpen(instanceId, player.getUniqueId()).thenAccept(success ->
+                PluginSchedulers.run(plugin, player, () -> {
+                    if (!success) {
+                        messageService.send(player.getUniqueId(), "physical-crate-open-denied");
+                        restorePhysicalCrateAfterOpenFailed(player, crate, instance, openLocation);
+                        return;
+                    }
+                    if (isSelectMode(crate)) {
+                        messageService.send(player.getUniqueId(), "physical-crate-select-disabled");
+                        physicalCrateService.tryCancelOpen(instanceId).thenAccept(ignored ->
+                                PluginSchedulers.run(plugin, player, () ->
+                                        restorePhysicalCrateAfterOpenFailed(player, crate, instance, openLocation)
+                                )
+                        );
+                        return;
+                    }
+                    startOpeningSession(player, crate, openLocation, instanceId);
+                })
+        );
+    }
+
+    private void restorePhysicalCrateAfterOpenFailed(
+            Player player,
+            CrateDefinition crate,
+            CrateInstance instance,
+            Location location
+    ) {
+        if (physicalCrateService == null || location == null) {
+            return;
+        }
+        physicalCrateService.returnPlacedCrate(player, crate, instance, location.getBlock().getLocation());
+    }
+
+    private Location normalizePhysicalBlockLocation(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return null;
+        }
+        return location.getBlock().getLocation();
+    }
+
+    private void cancelPhysicalOpening(Player player, CrateOpeningSession session) {
+        UUID instanceId = session.context().instanceId();
+        if (instanceId == null || physicalCrateService == null) {
+            return;
+        }
+        Optional<CrateInstance> instanceOptional = physicalCrateService.findCached(instanceId);
+        if (instanceOptional.isEmpty()) {
+            physicalCrateService.tryCancelOpen(instanceId);
+            return;
+        }
+        CrateInstance instance = instanceOptional.get();
+        CrateDefinition crate = session.crateDefinition();
+        Location location = session.context().crateLocation();
+        physicalCrateService.tryCancelOpen(instanceId).thenAccept(ignored ->
+                PluginSchedulers.run(plugin, player, () -> {
+                    Location blockLocation = location == null ? null : location.getBlock().getLocation();
+                    if (blockLocation != null) {
+                        restorePhysicalCrateAfterOpenFailed(player, crate, instance, blockLocation);
+                    }
+                })
+        );
     }
 
     public void applyConfig(PluginConfig config) {
@@ -256,10 +363,16 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             DeliveryResult deliveryResult
     ) {
         if (deliveryResult.isFailed()) {
+            if (session.context().instanceId() != null) {
+                cancelPhysicalOpening(player, session);
+            } else {
+                revertPhysicalInstance(session);
+            }
             sessionRegistry.unregister(session);
             resumeIdleIfBound(session.context().crateLocation());
             return;
         }
+        finishPhysicalInstance(session);
         resumeIdleIfBound(session.context().crateLocation());
         session.unload();
         Bukkit.getPluginManager().callEvent(new CrateOpenFinishEvent(session.context()));
@@ -440,6 +553,10 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
     }
 
     private void startOpeningSession(Player player, CrateDefinition crate, Location location) {
+        startOpeningSession(player, crate, location, null);
+    }
+
+    private void startOpeningSession(Player player, CrateDefinition crate, Location location, UUID instanceId) {
         if (sessionRegistry.isBusy(player.getUniqueId())) {
             messageService.send(player.getUniqueId(), "open-already");
             return;
@@ -449,6 +566,10 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         }
         if (isSelectMode(crate)) {
             openSelectMenu(player, crate, location);
+            return;
+        }
+        if (instanceId != null) {
+            continueOpeningSession(player, crate, location, instanceId);
             return;
         }
         int required = crate.opening().requireKey ? Math.max(1, crate.opening().keysRequired) : 0;
@@ -477,17 +598,25 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
     }
 
     private void continueOpeningSession(Player player, CrateDefinition crate, Location location) {
+        continueOpeningSession(player, crate, location, null);
+    }
+
+    private void continueOpeningSession(Player player, CrateDefinition crate, Location location, UUID instanceId) {
         cooldownTracker.apply(player, crate);
         pityService.loadCounter(player.getUniqueId(), crate.id()).thenCompose(counter ->
                 pityService.shouldForcePity(crate, counter).thenApply(forcePity -> {
                     RewardRollResult roll = rewardRollService.roll(crate, counter, forcePity, resolveGuaranteedRarity(crate));
-                    PluginSchedulers.run(plugin, player, () -> launchSession(player, crate, location, roll));
+                    PluginSchedulers.run(plugin, player, () -> launchSession(player, crate, location, roll, instanceId));
                     return roll;
                 })
         );
     }
 
     private void launchSession(Player player, CrateDefinition crate, Location location, RewardRollResult roll) {
+        launchSession(player, crate, location, roll, null);
+    }
+
+    private void launchSession(Player player, CrateDefinition crate, Location location, RewardRollResult roll, UUID instanceId) {
         pauseIdleIfBound(location);
         Location openLocation = normalizeOpenLocation(location);
         if (openLocation == null) {
@@ -497,22 +626,31 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                 player.getUniqueId(),
                 crate.id(),
                 openLocation,
-                crate.opening().keysRequired,
-                false
+                instanceId != null ? 0 : crate.opening().keysRequired,
+                false,
+                instanceId
         );
         Bukkit.getPluginManager().callEvent(new CrateOpenStartEvent(context));
         UUID sessionId = UUID.randomUUID();
         CrateOpeningSession session = new CrateOpeningSession(sessionId, context, crate, roll, plugin);
         PremiumOpeningSettings premium = pluginConfig.cratesSettings().premiumOpening;
         session.setOnCancel(() -> PluginSchedulers.run(plugin, player, () -> {
+            if (session.context().instanceId() != null) {
+                cancelPhysicalOpening(player, session);
+            } else {
+                revertPhysicalInstance(session);
+            }
             resumeIdleIfBound(session.context().crateLocation());
             sessionRegistry.unregister(session);
-            messageService.send(player.getUniqueId(), "open-cancelled");
+            if (!session.suppressCancelMessage()) {
+                messageService.send(player.getUniqueId(), "open-cancelled");
+            }
         }));
         session.setOnFinish(() -> sessionRegistry.unregister(session));
         try {
             sessionRegistry.register(session);
         } catch (IllegalStateException exception) {
+            revertPhysicalInstance(session);
             messageService.send(player.getUniqueId(), "open-already");
             return;
         }
@@ -531,7 +669,7 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             return;
         }
         DisplayComponent displayComponent = displayEngineRegistry.createComponent(crate, context.crateLocation(), player);
-        if (shouldSpawnOpeningDisplay(crate, context.crateLocation())) {
+        if (shouldSpawnOpeningDisplay(crate, context.crateLocation(), instanceId)) {
             displayComponent.create();
         }
         session.setDisplayComponent(displayComponent);
@@ -539,6 +677,29 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         pipeline.setCompletionCallback(() -> PluginSchedulers.run(plugin, player, () -> onAnimationComplete(player, session)));
         session.setAnimationPipeline(pipeline);
         session.start(player);
+    }
+
+    private void finishPhysicalInstance(CrateOpeningSession session) {
+        UUID instanceId = session.context().instanceId();
+        if (instanceId == null || physicalCrateService == null) {
+            return;
+        }
+        Location location = session.context().crateLocation();
+        physicalCrateService.tryFinishOpen(instanceId).thenAccept(success ->
+                PluginSchedulers.runAt(plugin, location, () -> {
+                    if (success) {
+                        physicalCrateService.removePlacedBlock(location);
+                    }
+                })
+        );
+    }
+
+    private void revertPhysicalInstance(CrateOpeningSession session) {
+        UUID instanceId = session.context().instanceId();
+        if (instanceId == null || physicalCrateService == null) {
+            return;
+        }
+        physicalCrateService.tryCancelOpen(instanceId);
     }
 
     private void finishWithoutAnimation(Player player, CrateOpeningSession session, OpeningSkipMode mode) {
@@ -642,7 +803,10 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                 && "SELECT".equalsIgnoreCase(crate.opening().rewardsMode.trim());
     }
 
-    private static boolean shouldSpawnOpeningDisplay(CrateDefinition crate, Location location) {
+    private static boolean shouldSpawnOpeningDisplay(CrateDefinition crate, Location location, UUID instanceId) {
+        if (instanceId != null) {
+            return false;
+        }
         if (crate.engineKind() == DisplayEngineKind.VANILLA_DISPLAY) {
             return false;
         }

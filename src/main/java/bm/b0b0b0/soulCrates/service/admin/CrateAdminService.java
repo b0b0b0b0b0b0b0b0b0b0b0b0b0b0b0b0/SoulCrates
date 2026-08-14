@@ -12,6 +12,7 @@ import bm.b0b0b0.soulCrates.service.idle.IdleCrateDisplayService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
 import bm.b0b0b0.soulCrates.service.lootbox.LootBoxService;
+import bm.b0b0b0.soulCrates.service.physical.PhysicalCrateService;
 import bm.b0b0b0.soulCrates.service.npc.CrateNpcService;
 import bm.b0b0b0.soulCrates.service.player.PlayerDataService;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -39,6 +41,7 @@ public final class CrateAdminService {
     private final LootBoxService lootBoxService;
     private final ClaimService claimService;
     private final KeyCountResolver keyCountResolver;
+    private final PhysicalCrateService physicalCrateService;
     private ConfigurationLoader configurationLoader;
 
     public CrateAdminService(
@@ -52,7 +55,8 @@ public final class CrateAdminService {
             IdleCrateDisplayService idleCrateDisplayService,
             LootBoxService lootBoxService,
             ClaimService claimService,
-            KeyCountResolver keyCountResolver
+            KeyCountResolver keyCountResolver,
+            PhysicalCrateService physicalCrateService
     ) {
         this.plugin = plugin;
         this.messageService = messageService;
@@ -65,6 +69,7 @@ public final class CrateAdminService {
         this.lootBoxService = lootBoxService;
         this.claimService = claimService;
         this.keyCountResolver = keyCountResolver;
+        this.physicalCrateService = physicalCrateService;
     }
 
     public void attachConfigurationLoader(ConfigurationLoader configurationLoader) {
@@ -100,6 +105,54 @@ public final class CrateAdminService {
         );
     }
 
+    public void givePhysicalCrate(CommandSender sender, Player target, String crateId, int amount) {
+        givePhysicalCrate(sender, target, crateId, amount, null);
+    }
+
+    public void givePhysicalCrate(CommandSender sender, Player target, String crateId, int amount, String presetId) {
+        if (!sender.hasPermission("soulcrates.command.givecrate")) {
+            notifySender(sender, "no-permission");
+            return;
+        }
+        if (physicalCrateService == null || !physicalCrateService.enabled()) {
+            notifySender(sender, "physical-crate-disabled");
+            return;
+        }
+        String normalizedCrateId = crateId.toLowerCase(Locale.ROOT);
+        if (presetId != null && !presetId.isBlank() && !AnimationPresetRegistry.isKnownPreset(presetId)) {
+            notifySender(sender, "setcrate-invalid-preset", messageService.placeholder("preset", presetId));
+            return;
+        }
+        Optional<CrateDefinition> crateOptional = ensureCrateDefinition(normalizedCrateId, null, presetId);
+        if (crateOptional.isEmpty()) {
+            crateOptional = crateRegistry.find(normalizedCrateId);
+        }
+        if (crateOptional.isEmpty()) {
+            notifySender(sender, "crate-not-found", messageService.placeholder("crate", crateId));
+            return;
+        }
+        CrateDefinition crate = crateOptional.get();
+        int safeAmount = Math.max(1, Math.min(amount, 64));
+        physicalCrateService.registerInstances(crate.id(), target.getUniqueId(), safeAmount).thenAccept(instanceIds ->
+                PluginSchedulers.run(plugin, target, () -> {
+                    physicalCrateService.giveItems(target, crate, instanceIds);
+                    notifySender(
+                            sender,
+                            "givecrate-success",
+                            messageService.placeholder("player", target.getName()),
+                            messageService.placeholder("crate", crate.displayName()),
+                            messageService.placeholder("amount", Integer.toString(safeAmount))
+                    );
+                    messageService.send(
+                            target.getUniqueId(),
+                            "givecrate-received",
+                            messageService.placeholder("crate", crate.displayName()),
+                            messageService.placeholder("amount", Integer.toString(safeAmount))
+                    );
+                })
+        );
+    }
+
     public void bindCrate(Player player, String crateId, Location location) {
         bindCrate(player, crateId, location, null);
     }
@@ -122,7 +175,7 @@ public final class CrateAdminService {
             );
             return;
         }
-        Optional<CrateDefinition> crateOptional = ensureCrateDefinition(normalizedCrateId, presetId);
+        Optional<CrateDefinition> crateOptional = ensureCrateDefinition(normalizedCrateId, location, presetId);
         if (crateOptional.isEmpty()) {
             messageService.send(player.getUniqueId(), "crate-not-found", messageService.placeholder("crate", crateId));
             return;
@@ -130,6 +183,7 @@ public final class CrateAdminService {
         CrateDefinition crate = crateOptional.get();
         locationService.bind(location, normalizedCrateId).thenRun(() -> PluginSchedulers.run(plugin, player, () -> {
             if (idleCrateDisplayService != null) {
+                idleCrateDisplayService.onUnbind(location);
                 idleCrateDisplayService.onBind(location, normalizedCrateId);
             }
             if (presetId != null && !presetId.isBlank()) {
@@ -149,24 +203,36 @@ public final class CrateAdminService {
         }));
     }
 
-    private Optional<CrateDefinition> ensureCrateDefinition(String crateId, String presetId) {
-        Optional<CrateDefinition> existing = crateRegistry.find(crateId);
-        if (presetId == null || presetId.isBlank()) {
-            return existing;
-        }
+    private Optional<CrateDefinition> ensureCrateDefinition(String crateId, Location location, String presetId) {
         if (configurationLoader == null) {
-            return existing;
+            return crateRegistry.find(crateId);
         }
+        Optional<CrateDefinition> existing = crateRegistry.find(crateId);
         CrateDefinitionSettings settings = configurationLoader.loadCrateSettings(crateId);
         settings.id = crateId;
         if (existing.isEmpty()) {
             settings.displayName = titleCase(crateId);
         }
-        AnimationPresetRegistry.applyPreset(settings.animations, presetId);
+        applyBoundBlockEngine(settings, location);
+        if (presetId != null && !presetId.isBlank()) {
+            AnimationPresetRegistry.applyPreset(settings.animations, presetId);
+        }
         configurationLoader.saveCrateSettings(settings);
         CrateDefinition definition = CrateDefinitionLoader.toDefinition(settings);
         crateRegistry.register(definition);
         return Optional.of(definition);
+    }
+
+    private static void applyBoundBlockEngine(CrateDefinitionSettings settings, Location location) {
+        if (settings == null || location == null || location.getWorld() == null) {
+            return;
+        }
+        Material material = location.getBlock().getType();
+        if (material.isAir()) {
+            return;
+        }
+        settings.engine.type = "VANILLA_BLOCK";
+        settings.engine.blockMaterial = material.name();
     }
 
     public void unbindCrate(Player player, Location location) {

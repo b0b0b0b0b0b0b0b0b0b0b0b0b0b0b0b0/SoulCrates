@@ -7,6 +7,7 @@ import bm.b0b0b0.soulCrates.config.settings.IdleDisplaySettings;
 import bm.b0b0b0.soulCrates.engine.DisplayEngineRegistry;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
+import bm.b0b0b0.soulCrates.model.CrateInstance;
 import bm.b0b0b0.soulCrates.hook.HookRegistry;
 import bm.b0b0b0.soulCrates.repository.CrateRepository;
 import bm.b0b0b0.soulCrates.service.reward.WinLimitService;
@@ -21,6 +22,7 @@ import bm.b0b0b0.soulCrates.service.npc.CrateNpcService;
 import bm.b0b0b0.soulCrates.service.open.BulkOpenService;
 import bm.b0b0b0.soulCrates.service.open.CrateOpeningService;
 import bm.b0b0b0.soulCrates.service.open.OpenCooldownTracker;
+import bm.b0b0b0.soulCrates.service.physical.PhysicalCrateService;
 import bm.b0b0b0.soulCrates.service.player.PlayerDataService;
 import bm.b0b0b0.soulCrates.service.reward.BroadcastService;
 import bm.b0b0b0.soulCrates.service.reward.PityService;
@@ -64,6 +66,7 @@ public final class CrateService {
     private CrateOpeningService openingService;
     private CrateMenuService menuService;
     private CrateAdminService adminService;
+    private PhysicalCrateService physicalCrateService;
     private volatile boolean loaded;
 
     public CrateService(
@@ -107,6 +110,9 @@ public final class CrateService {
         if (menuService != null) {
             menuService.applyConfig(config);
         }
+        if (physicalCrateService != null) {
+            physicalCrateService.applySettings(config.cratesSettings().physicalCrates);
+        }
     }
 
     public void attachRepository(
@@ -127,9 +133,11 @@ public final class CrateService {
             RewardDeliveryService rewardDeliveryService,
             DisplayEngineRegistry displayEngineRegistry,
             PhaseFactory phaseFactory,
-            HookRegistry hookRegistry
+            HookRegistry hookRegistry,
+            PhysicalCrateService physicalCrateService
     ) {
         this.keyService = keyService;
+        this.physicalCrateService = physicalCrateService;
         this.hookRegistry = hookRegistry;
         this.playerDataService = playerDataService;
         this.locationService = locationService;
@@ -199,10 +207,14 @@ public final class CrateService {
                 keyShopService,
                 claimService,
                 keyService,
+                physicalCrateService,
                 openingService,
                 this::applyConfig
         );
         openingService.attachMenuService(menuService);
+        if (physicalCrateService != null) {
+            openingService.attachPhysicalCrateService(physicalCrateService);
+        }
         adminService = new CrateAdminService(
                 plugin,
                 messageService,
@@ -214,7 +226,8 @@ public final class CrateService {
                 idleCrateDisplayService,
                 lootBoxService,
                 claimService,
-                keyCountResolver
+                keyCountResolver,
+                physicalCrateService
         );
         adminService.attachConfigurationLoader(configurationLoader);
         if (broadcastService != null) {
@@ -247,6 +260,9 @@ public final class CrateService {
         }
         if (idleCrateDisplayService != null) {
             idleCrateDisplayService.shutdown();
+        }
+        if (physicalCrateService != null) {
+            physicalCrateService.clearCache();
         }
     }
 
@@ -338,6 +354,13 @@ public final class CrateService {
             return;
         }
         menuService.openPreview(player, crateId, openLocation);
+    }
+
+    public void openPlacedCrate(Player player, CrateInstance instance, Location openLocation) {
+        if (!ready(player)) {
+            return;
+        }
+        menuService.openPlacedCrate(player, instance, openLocation);
     }
 
     public void openEditor(Player player) {
@@ -443,6 +466,18 @@ public final class CrateService {
 
     public void giveLootBox(CommandSender sender, Player target, String crateId, int amount) {
         adminService.giveLootBox(sender, target, crateId, amount);
+    }
+
+    public void givePhysicalCrate(CommandSender sender, Player target, String crateId, int amount) {
+        adminService.givePhysicalCrate(sender, target, crateId, amount);
+    }
+
+    public void givePhysicalCrate(CommandSender sender, Player target, String crateId, int amount, String presetId) {
+        adminService.givePhysicalCrate(sender, target, crateId, amount, presetId);
+    }
+
+    public PhysicalCrateService physicalCrateService() {
+        return physicalCrateService;
     }
 
     public void bindCrate(Player player, String crateId, Location location) {

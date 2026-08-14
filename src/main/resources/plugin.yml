@@ -46,6 +46,8 @@ permissions:
     default: true
   soulcrates.command.givelootbox:
     default: op
+  soulcrates.command.givecrate:
+    default: op
   soulcrates.open.skip:
     default: false
   soulcrates.open.instant:

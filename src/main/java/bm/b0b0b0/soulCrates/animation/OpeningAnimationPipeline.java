@@ -66,20 +66,34 @@ public final class OpeningAnimationPipeline {
     }
 
     private void tick(Player player, CrateOpeningSession session) {
-        if (done || !player.isOnline() || !session.isActive()) {
-            unload();
+        if (done) {
+            return;
+        }
+        if (!player.isOnline() || !session.isActive()) {
+            unload(player, session);
             return;
         }
         if (currentPhase == null) {
             return;
         }
         currentPhase.tick(player, session);
+        if (done || !session.isActive()) {
+            unload(player, session);
+            return;
+        }
+        if (currentPhase == null) {
+            return;
+        }
         if (currentPhase.finished()) {
             nextPhase(player, session);
         }
     }
 
     private void nextPhase(Player player, CrateOpeningSession session) {
+        if (!session.isActive()) {
+            unload(player, session);
+            return;
+        }
         if (currentPhase != null) {
             if (currentKind != null) {
                 Bukkit.getPluginManager().callEvent(new CrateOpenPhaseEndEvent(session.context(), currentKind));
@@ -115,19 +129,34 @@ public final class OpeningAnimationPipeline {
 
     private void complete() {
         done = true;
-        unload();
+        if (tickTask != null) {
+            tickTask.cancel();
+            tickTask = null;
+        }
         if (completionCallback != null) {
             completionCallback.run();
         }
     }
 
-    public void unload() {
+    public void unload(Player player, CrateOpeningSession session) {
         done = true;
         if (tickTask != null) {
             tickTask.cancel();
             tickTask = null;
         }
-        currentPhase = null;
-        currentKind = null;
+        if (currentPhase != null) {
+            if (currentKind != null && session != null) {
+                Bukkit.getPluginManager().callEvent(new CrateOpenPhaseEndEvent(session.context(), currentKind));
+            }
+            if (player != null && session != null) {
+                currentPhase.unload(player, session);
+            }
+            currentPhase = null;
+            currentKind = null;
+        }
+    }
+
+    public void unload() {
+        unload(null, null);
     }
 }

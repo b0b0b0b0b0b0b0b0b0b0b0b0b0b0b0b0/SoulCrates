@@ -1,10 +1,12 @@
 package bm.b0b0b0.soulCrates.repository;
 
+import bm.b0b0b0.soulCrates.model.CrateInstance;
 import bm.b0b0b0.soulCrates.model.PendingClaim;
 import bm.b0b0b0.soulCrates.model.RewardWinStats;
 import bm.b0b0b0.soulCrates.model.WinnerEntry;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.bukkit.Location;
@@ -64,4 +66,22 @@ public interface CrateRepository {
     CompletableFuture<RewardWinStats> loadGlobalRewardWins(String crateId, String rewardId);
 
     CompletableFuture<Void> recordRewardWin(UUID playerId, String crateId, String rewardId);
+
+    CompletableFuture<Void> createInstance(UUID instanceId, String crateId, UUID ownerId, long createdAt);
+
+    CompletableFuture<Optional<CrateInstance>> findInstance(UUID instanceId);
+
+    CompletableFuture<List<CrateInstance>> loadPlacedInstances();
+
+    CompletableFuture<Boolean> tryPlaceInstance(UUID instanceId, UUID ownerId, Location location);
+
+    CompletableFuture<Boolean> tryBeginInstanceOpen(UUID instanceId, UUID playerId);
+
+    CompletableFuture<Boolean> tryFinishInstanceOpen(UUID instanceId);
+
+    CompletableFuture<Boolean> tryCancelInstanceOpen(UUID instanceId);
+
+    CompletableFuture<Boolean> tryUnplaceInstance(UUID instanceId, UUID playerId, Location location);
+
+    CompletableFuture<Optional<CrateInstance>> findInstanceAt(Location location);
 }

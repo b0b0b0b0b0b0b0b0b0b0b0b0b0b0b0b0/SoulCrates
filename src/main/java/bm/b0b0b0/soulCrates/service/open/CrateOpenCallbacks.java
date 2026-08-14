@@ -8,5 +8,7 @@ public interface CrateOpenCallbacks {
 
     void proceedOpenFlow(Player player, CrateDefinition crate, Location location, int amount);
 
+    void beginPhysicalCrateOpen(Player player, java.util.UUID instanceId, Location location);
+
     void reloadCrates(Player player);
 }
