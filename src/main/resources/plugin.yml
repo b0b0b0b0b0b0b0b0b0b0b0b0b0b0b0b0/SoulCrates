@@ -1,0 +1,43 @@
+name: SoulCrates
+version: '${version}'
+main: bm.b0b0b0.soulCrates.SoulCrates
+api-version: '1.21'
+folia-supported: true
+authors: [ b0b0b0 ]
+softdepend: [ Vault, PlaceholderAPI, ModelEngine, ItemsAdder ]
+libraries:
+  - net.elytrium:serializer:1.1.1
+  - com.google.code.gson:gson:2.14.0
+  - com.zaxxer:HikariCP:6.3.0
+  - com.mysql:mysql-connector-j:9.7.0
+  - org.xerial:sqlite-jdbc:3.53.2.1
+commands:
+  soulcrates:
+    description: SoulCrates main command
+    aliases: [ sc, crates ]
+    permission: soulcrates.command.use
+permissions:
+  soulcrates.command.use:
+    default: true
+  soulcrates.command.open:
+    default: true
+  soulcrates.command.preview:
+    default: true
+  soulcrates.command.admin:
+    default: op
+  soulcrates.command.reload:
+    default: op
+  soulcrates.command.givekey:
+    default: op
+  soulcrates.command.keys:
+    default: true
+  soulcrates.command.stats.others:
+    default: op
+  soulcrates.command.shop:
+    default: true
+  soulcrates.open.skip:
+    default: op
+  soulcrates.open.instant:
+    default: op
+  soulcrates.open.multi:
+    default: true

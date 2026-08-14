@@ -1,0 +1,235 @@
+package bm.b0b0b0.soulCrates.bootstrap;
+
+import bm.b0b0b0.soulCrates.animation.PhaseFactory;
+import bm.b0b0b0.soulCrates.api.SoulCratesApi;
+import bm.b0b0b0.soulCrates.command.CratesCommand;
+import bm.b0b0b0.soulCrates.config.ConfigurationLoader;
+import bm.b0b0b0.soulCrates.config.PluginConfig;
+import bm.b0b0b0.soulCrates.database.DatabaseBootstrap;
+import bm.b0b0b0.soulCrates.engine.DisplayEngineRegistry;
+import bm.b0b0b0.soulCrates.gui.SoulGuiListener;
+import bm.b0b0b0.soulCrates.hook.HookRegistry;
+import bm.b0b0b0.soulCrates.hook.modelengine.ModelEngineHookProvider;
+import bm.b0b0b0.soulCrates.hook.placeholder.PlaceholderHookProvider;
+import bm.b0b0b0.soulCrates.hook.vault.VaultHookProvider;
+import bm.b0b0b0.soulCrates.lang.MessageService;
+import bm.b0b0b0.soulCrates.listener.CrateChunkListener;
+import bm.b0b0b0.soulCrates.listener.CrateInteractListener;
+import bm.b0b0b0.soulCrates.listener.PlayerJoinListener;
+import bm.b0b0b0.soulCrates.repository.CrateRepository;
+import bm.b0b0b0.soulCrates.service.CrateRegistry;
+import bm.b0b0b0.soulCrates.service.CrateService;
+import bm.b0b0b0.soulCrates.service.idle.IdleCrateDisplayService;
+import bm.b0b0b0.soulCrates.service.key.KeyService;
+import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
+import bm.b0b0b0.soulCrates.service.open.BulkOpenService;
+import bm.b0b0b0.soulCrates.service.player.PlayerDataService;
+import bm.b0b0b0.soulCrates.service.reward.BroadcastService;
+import bm.b0b0b0.soulCrates.service.reward.PityService;
+import bm.b0b0b0.soulCrates.service.reward.RewardDeliveryService;
+import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
+import bm.b0b0b0.soulCrates.service.reroll.RerollService;
+import bm.b0b0b0.soulCrates.service.shop.KeyShopService;
+import bm.b0b0b0.soulCrates.session.SessionRegistry;
+import bm.b0b0b0.soulCrates.util.PluginSchedulers;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public final class SoulCratesCore {
+
+    private final JavaPlugin plugin;
+    private final SoulCratesStartupLog startupLog;
+    private ConfigurationLoader configurationLoader;
+    private PluginConfig pluginConfig;
+    private MessageService messageService;
+    private HookRegistry hookRegistry;
+    private CrateRegistry crateRegistry;
+    private DisplayEngineRegistry displayEngineRegistry;
+    private SessionRegistry sessionRegistry;
+    private RewardRollService rewardRollService;
+    private RewardDeliveryService rewardDeliveryService;
+    private PhaseFactory phaseFactory;
+    private CrateService crateService;
+    private KeyService keyService;
+    private CrateLocationService locationService;
+    private PlayerDataService playerDataService;
+    private BroadcastService broadcastService;
+    private IdleCrateDisplayService idleCrateDisplayService;
+    private BulkOpenService bulkOpenService;
+    private KeyShopService keyShopService;
+    private RerollService rerollService;
+    private CrateInteractListener crateInteractListener;
+    private DatabaseBootstrap databaseBootstrap;
+    private SoulCratesApi soulCratesApi;
+    private CratesCommand cratesCommand;
+
+    public SoulCratesCore(JavaPlugin plugin) {
+        this.plugin = plugin;
+        this.startupLog = new SoulCratesStartupLog(plugin);
+    }
+
+    public void enable() {
+        startupLog.bannerStart(plugin.getPluginMeta().getVersion());
+        if (!plugin.getDataFolder().exists() && !plugin.getDataFolder().mkdirs()) {
+            startupLog.stepFail("Data folder — failed to create");
+        }
+        startupLog.stepSchedulers();
+        configurationLoader = new ConfigurationLoader(plugin);
+        pluginConfig = configurationLoader.load();
+        startupLog.stepOk("Config loaded — crates=" + pluginConfig.crateDefinitions().size());
+        messageService = new MessageService(plugin);
+        crateRegistry = new CrateRegistry();
+        displayEngineRegistry = new DisplayEngineRegistry(plugin);
+        sessionRegistry = new SessionRegistry(plugin, pluginConfig.cratesSettings().sessionTimeoutSeconds);
+        rewardRollService = new RewardRollService();
+        hookRegistry = new HookRegistry(plugin);
+        hookRegistry.registerProvider(new VaultHookProvider());
+        hookRegistry.registerProvider(new ModelEngineHookProvider());
+        hookRegistry.registerProvider(new PlaceholderHookProvider(() -> crateService));
+        hookRegistry.registerHooks();
+        rewardDeliveryService = new RewardDeliveryService(plugin, hookRegistry);
+        phaseFactory = new PhaseFactory(plugin, messageService, pluginConfig.guiSpinnerSettings());
+        rerollService = new RerollService(rewardRollService, hookRegistry);
+        broadcastService = new BroadcastService(pluginConfig.cratesSettings().broadcast, messageService);
+        crateService = new CrateService(
+                plugin,
+                configurationLoader,
+                pluginConfig,
+                messageService,
+                crateRegistry,
+                displayEngineRegistry,
+                sessionRegistry,
+                rewardRollService,
+                rewardDeliveryService,
+                phaseFactory
+        );
+        soulCratesApi = new SoulCratesApi(crateService);
+        plugin.getServer().getPluginManager().registerEvents(new SoulGuiListener(pluginConfig.guiGeneralSettings()), plugin);
+        cratesCommand = new CratesCommand(this);
+        registerCommands();
+        databaseBootstrap = new DatabaseBootstrap(plugin, pluginConfig.cratesSettings().database);
+        PluginSchedulers.runAsync(plugin, () -> databaseBootstrap.start().whenComplete((repository, error) -> {
+            if (error != null) {
+                startupLog.stepFail("Database — " + error.getMessage());
+                return;
+            }
+            attachRepository(repository);
+        }));
+        hookRegistry.loadHooks();
+    }
+
+    private void attachRepository(CrateRepository repository) {
+        keyService = new KeyService(plugin, messageService, repository);
+        locationService = new CrateLocationService(repository);
+        playerDataService = new PlayerDataService(repository, keyService);
+        bulkOpenService = new BulkOpenService(
+                rewardRollService,
+                new PityService(repository),
+                rewardDeliveryService,
+                broadcastService,
+                playerDataService,
+                repository
+        );
+        keyShopService = new KeyShopService(
+                pluginConfig.cratesSettings().shop,
+                hookRegistry,
+                keyService,
+                crateRegistry,
+                messageService
+        );
+        idleCrateDisplayService = new IdleCrateDisplayService(
+                plugin,
+                pluginConfig.cratesSettings().idleDisplay,
+                displayEngineRegistry,
+                crateRegistry,
+                locationService
+        );
+        locationService.loadAll().whenComplete((ignored, error) -> PluginSchedulers.runGlobal(plugin, () -> {
+            if (error != null) {
+                startupLog.stepFail("Locations — " + error.getMessage());
+            }
+            crateService.attachRepository(
+                    repository,
+                    keyService,
+                    locationService,
+                    rerollService,
+                    playerDataService,
+                    broadcastService,
+                    idleCrateDisplayService,
+                    bulkOpenService,
+                    keyShopService
+            );
+            idleCrateDisplayService.spawnAll();
+            crateInteractListener = new CrateInteractListener(
+                    crateService,
+                    locationService,
+                    pluginConfig.cratesSettings().idleDisplay
+            );
+            plugin.getServer().getPluginManager().registerEvents(crateInteractListener, plugin);
+            plugin.getServer().getPluginManager().registerEvents(new PlayerJoinListener(plugin, playerDataService, crateRegistry), plugin);
+            plugin.getServer().getPluginManager().registerEvents(new CrateChunkListener(idleCrateDisplayService), plugin);
+            for (org.bukkit.entity.Player online : plugin.getServer().getOnlinePlayers()) {
+                PluginSchedulers.runAsync(plugin, () -> playerDataService.preload(
+                        online.getUniqueId(),
+                        crateRegistry.list().stream().map(crate -> crate.id()).toList()
+                ));
+            }
+            startupLog.stepOk("Database ready — locations=" + locationService.allBindings().size());
+            startupLog.bannerReady();
+        }));
+    }
+
+    public void reload() {
+        pluginConfig = configurationLoader.load();
+        messageService.reload();
+        phaseFactory = new PhaseFactory(plugin, messageService, pluginConfig.guiSpinnerSettings());
+        broadcastService.applySettings(pluginConfig.cratesSettings().broadcast);
+        if (keyShopService != null) {
+            keyShopService.applySettings(pluginConfig.cratesSettings().shop);
+        }
+        crateService.applyConfig(pluginConfig);
+        if (crateInteractListener != null) {
+            crateInteractListener.applySettings(pluginConfig.cratesSettings().idleDisplay);
+        }
+        startupLog.stepOk("Reload complete — crates=" + pluginConfig.crateDefinitions().size());
+    }
+
+    public void disable() {
+        if (hookRegistry != null) {
+            hookRegistry.unloadHooks();
+        }
+        if (crateService != null) {
+            crateService.shutdown();
+        }
+        if (databaseBootstrap != null) {
+            databaseBootstrap.shutdown();
+        }
+        startupLog.bannerShutdown();
+    }
+
+    private void registerCommands() {
+        PluginCommand command = plugin.getCommand("soulcrates");
+        command.setExecutor(cratesCommand);
+        command.setTabCompleter(cratesCommand);
+    }
+
+    public ConfigurationLoader configurationLoader() {
+        return configurationLoader;
+    }
+
+    public PluginConfig pluginConfig() {
+        return pluginConfig;
+    }
+
+    public MessageService messageService() {
+        return messageService;
+    }
+
+    public CrateService crateService() {
+        return crateService;
+    }
+
+    public SoulCratesApi api() {
+        return soulCratesApi;
+    }
+}
