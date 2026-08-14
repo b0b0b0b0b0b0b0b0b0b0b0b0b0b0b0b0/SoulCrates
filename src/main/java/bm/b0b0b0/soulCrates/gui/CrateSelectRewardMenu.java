@@ -30,6 +30,7 @@ public final class CrateSelectRewardMenu extends SoulMenu {
     private final BiConsumer<Player, RewardDefinition> redeemAction;
     private final Runnable backAction;
     private final Map<Integer, RewardDefinition> rewardSlots = new HashMap<>();
+    private int page;
 
     public CrateSelectRewardMenu(
             UUID viewerId,
@@ -72,23 +73,28 @@ public final class CrateSelectRewardMenu extends SoulMenu {
         if (player == null) {
             return;
         }
-        for (int slot = 0; slot < getInventory().getSize(); slot++) {
-            getInventory().setItem(slot, GuiItemFactory.filler(selectSettings.fillerMaterial));
-        }
-        List<Integer> slots = selectSettings.rewardSlots;
         List<RewardDefinition> rewards = crateDefinition.rewards();
-        for (int index = 0; index < slots.size() && index < rewards.size(); index++) {
-            RewardDefinition reward = rewards.get(index);
+        PagedRewardGuiRenderer.PageView pageView = PagedRewardGuiRenderer.normalizePage(
+                page,
+                rewards.size(),
+                selectSettings.grid.rewardSlots.size()
+        );
+        page = pageView.page();
+        PagedRewardGuiRenderer.applyGrid(getInventory(), selectSettings.grid, messageService, player, pageView);
+        List<Integer> slots = selectSettings.grid.rewardSlots;
+        for (int index = 0; index < slots.size(); index++) {
+            int rewardIndex = pageView.pageStartIndex() + index;
+            if (rewardIndex >= rewards.size()) {
+                break;
+            }
+            RewardDefinition reward = rewards.get(rewardIndex);
             int slot = slots.get(index);
             rewardSlots.put(slot, reward);
             if (!winLimitService.canSelectByKeyRarity(crateDefinition, reward)) {
                 getInventory().setItem(slot, lockedReward(player, reward, "select-locked-rarity"));
                 continue;
             }
-            getInventory().setItem(
-                    slot,
-                    selectableReward(player, reward)
-            );
+            getInventory().setItem(slot, selectableReward(player, reward));
         }
         int keysRequired = Math.max(1, crateDefinition.opening().keysRequired);
         int keysOwned = keyService.totalKeys(player, crateDefinition.id());
@@ -97,6 +103,7 @@ public final class CrateSelectRewardMenu extends SoulMenu {
                 GuiItemFactory.actionButton(
                         messageService,
                         player,
+                        "BOOK",
                         "select-keys-title",
                         null
                 )
@@ -114,7 +121,12 @@ public final class CrateSelectRewardMenu extends SoulMenu {
             ));
             keysInfo.setItemMeta(meta);
         }
-        getInventory().setItem(selectSettings.backSlot, GuiItemFactory.cancelButton(messageService, player));
+        if (selectSettings.backSlot >= 0) {
+            getInventory().setItem(
+                    selectSettings.backSlot,
+                    GuiItemFactory.cancelButton(messageService, player, selectSettings.backMaterial)
+            );
+        }
     }
 
     @Override
@@ -123,7 +135,17 @@ public final class CrateSelectRewardMenu extends SoulMenu {
             return;
         }
         Player player = click.player();
-        if (click.slot() == selectSettings.backSlot) {
+        if (PagedRewardGuiRenderer.isPreviousPageSlot(selectSettings.grid, click.slot())) {
+            page = Math.max(0, page - 1);
+            refresh();
+            return;
+        }
+        if (PagedRewardGuiRenderer.isNextPageSlot(selectSettings.grid, click.slot())) {
+            page++;
+            refresh();
+            return;
+        }
+        if (selectSettings.backSlot >= 0 && click.slot() == selectSettings.backSlot) {
             player.closeInventory();
             if (backAction != null) {
                 backAction.run();

@@ -5,6 +5,7 @@ import bm.b0b0b0.soulCrates.config.settings.GuiSpinnerSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
+import bm.b0b0b0.soulCrates.service.reward.BroadcastService;
 import java.util.Locale;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -12,11 +13,18 @@ public final class PhaseFactory {
 
     private final JavaPlugin plugin;
     private final MessageService messageService;
+    private final BroadcastService broadcastService;
     private final GuiSpinnerSettings spinnerSettings;
 
-    public PhaseFactory(JavaPlugin plugin, MessageService messageService, GuiSpinnerSettings spinnerSettings) {
+    public PhaseFactory(
+            JavaPlugin plugin,
+            MessageService messageService,
+            BroadcastService broadcastService,
+            GuiSpinnerSettings spinnerSettings
+    ) {
         this.plugin = plugin;
         this.messageService = messageService;
+        this.broadcastService = broadcastService;
         this.spinnerSettings = spinnerSettings;
     }
 
@@ -65,7 +73,7 @@ public final class PhaseFactory {
             String type,
             RewardDefinition rolledReward
     ) {
-        if (isCsgoType(type)) {
+        if (isGuiSpinnerType(type)) {
             return new CsgoSpinnerPhase(
                     plugin,
                     messageService,
@@ -73,6 +81,15 @@ public final class PhaseFactory {
                     crateDefinition,
                     rolledReward,
                     settings.durationTicks
+            );
+        }
+        if (isWorldCarouselType(type)) {
+            return new WorldCarouselPhase(
+                    messageService,
+                    broadcastService,
+                    crateDefinition,
+                    rolledReward,
+                    settings
             );
         }
         return switch (type) {
@@ -100,14 +117,22 @@ public final class PhaseFactory {
         };
     }
 
-    private static boolean isCsgoType(String type) {
-        return "csgo".equals(type)
-                || "csgo_gui".equals(type)
-                || "spinner".equals(type)
-                || "carousel".equals(type)
+    private static boolean isGuiSpinnerType(String type) {
+        return "csgo_gui".equals(type)
                 || "rainbow_gui".equals(type)
                 || "flip_gui".equals(type)
                 || "snake_gui".equals(type);
+    }
+
+    private static boolean isWorldCarouselType(String type) {
+        return "csgo".equals(type)
+                || "spinner".equals(type)
+                || "carousel".equals(type)
+                || "world_carousel".equals(type)
+                || "roulette".equals(type)
+                || "orbit".equals(type)
+                || "ring".equals(type)
+                || "display".equals(type);
     }
 
     private static String normalizeType(String raw) {

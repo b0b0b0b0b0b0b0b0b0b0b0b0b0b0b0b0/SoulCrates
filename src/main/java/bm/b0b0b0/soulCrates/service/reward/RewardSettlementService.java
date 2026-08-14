@@ -96,7 +96,9 @@ public final class RewardSettlementService {
         if (deliveryResult.queued()) {
             messageService.send(player.getUniqueId(), "claim-queued");
         }
-        broadcastService.maybeBroadcast(player, crate, roll.reward());
+        if (!broadcastService.revealBroadcastEnabled()) {
+            broadcastService.maybeBroadcast(player, crate, roll.reward());
+        }
         UUID playerId = player.getUniqueId();
         String crateId = crate.id();
         pityService.afterRoll(playerId, crate, roll.pityTriggered(), roll.reward().id())

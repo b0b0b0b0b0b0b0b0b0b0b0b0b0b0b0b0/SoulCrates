@@ -9,6 +9,8 @@ import bm.b0b0b0.soulCrates.config.settings.OpenCostSettings;
 import bm.b0b0b0.soulCrates.config.settings.PremiumOpeningSettings;
 import bm.b0b0b0.soulCrates.config.settings.RerollSettings;
 import bm.b0b0b0.soulCrates.engine.DisplayComponent;
+import bm.b0b0b0.soulCrates.engine.VanillaDisplayEngine;
+import bm.b0b0b0.soulCrates.model.DisplayEngineKind;
 import bm.b0b0b0.soulCrates.engine.DisplayEngineRegistry;
 import bm.b0b0b0.soulCrates.gui.CrateConfirmMenu;
 import bm.b0b0b0.soulCrates.gui.CrateRerollMenu;
@@ -152,7 +154,7 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             return;
         }
         if (crate.opening().previewEnabled) {
-            menuService.openPreview(player, crate.id());
+            menuService.openPreview(player, crate.id(), openLocation);
             return;
         }
         proceedOpenFlow(player, crate, openLocation, 1);
@@ -202,12 +204,13 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
 
     @Override
     public void proceedOpenFlow(Player player, CrateDefinition crate, Location location, int amount) {
+        Location openLocation = normalizeOpenLocation(location);
         if (amount > 1) {
             if (isSelectMode(crate)) {
                 messageService.send(player.getUniqueId(), "select-multi-disabled");
                 return;
             }
-            startMultiOpen(player, crate, location, amount);
+            startMultiOpen(player, crate, openLocation, amount);
             return;
         }
         if (isSelectMode(crate)) {
@@ -217,13 +220,13 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                         messageService,
                         pluginConfig.guiConfirmSettings(),
                         crate,
-                        target -> openSelectMenu(target, crate, location),
+                        target -> openSelectMenu(target, crate, openLocation),
                         null
                 );
                 PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));
                 return;
             }
-            openSelectMenu(player, crate, location);
+            openSelectMenu(player, crate, openLocation);
             return;
         }
         if (crate.opening().confirmEnabled) {
@@ -232,13 +235,13 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                     messageService,
                     pluginConfig.guiConfirmSettings(),
                     crate,
-                    target -> startOpeningSession(target, crate, location),
+                    target -> startOpeningSession(target, crate, openLocation),
                     null
             );
             PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));
             return;
         }
-        startOpeningSession(player, crate, location);
+        startOpeningSession(player, crate, openLocation);
     }
 
     @Override
@@ -486,10 +489,14 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
 
     private void launchSession(Player player, CrateDefinition crate, Location location, RewardRollResult roll) {
         pauseIdleIfBound(location);
+        Location openLocation = normalizeOpenLocation(location);
+        if (openLocation == null) {
+            openLocation = player.getLocation();
+        }
         OpeningContext context = new OpeningContext(
                 player.getUniqueId(),
                 crate.id(),
-                location,
+                openLocation,
                 crate.opening().keysRequired,
                 false
         );
@@ -514,6 +521,7 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                 "open-started",
                 messageService.placeholder("crate", crate.displayName())
         );
+        player.closeInventory();
         if (player.hasPermission(premium.instantOpenPermission)) {
             finishWithoutAnimation(player, session, OpeningSkipMode.INSTANT);
             return;
@@ -523,7 +531,9 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             return;
         }
         DisplayComponent displayComponent = displayEngineRegistry.createComponent(crate, context.crateLocation(), player);
-        displayComponent.create();
+        if (shouldSpawnOpeningDisplay(crate, context.crateLocation())) {
+            displayComponent.create();
+        }
         session.setDisplayComponent(displayComponent);
         OpeningAnimationPipeline pipeline = new OpeningAnimationPipeline(plugin, phaseFactory, crate, roll.reward());
         pipeline.setCompletionCallback(() -> PluginSchedulers.run(plugin, player, () -> onAnimationComplete(player, session)));
@@ -630,6 +640,27 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
     private static boolean isSelectMode(CrateDefinition crate) {
         return crate.opening().rewardsMode != null
                 && "SELECT".equalsIgnoreCase(crate.opening().rewardsMode.trim());
+    }
+
+    private static boolean shouldSpawnOpeningDisplay(CrateDefinition crate, Location location) {
+        if (crate.engineKind() == DisplayEngineKind.VANILLA_DISPLAY) {
+            return false;
+        }
+        if (crate.engineKind() == DisplayEngineKind.VANILLA_BLOCK) {
+            return !VanillaDisplayEngine.usesExistingBlock(crate, location);
+        }
+        return true;
+    }
+
+    private Location normalizeOpenLocation(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return null;
+        }
+        Location block = location.getBlock().getLocation();
+        if (locationService.findCrateId(block).isPresent()) {
+            return block;
+        }
+        return location.clone();
     }
 
     private String resolveGuaranteedRarity(CrateDefinition crate) {

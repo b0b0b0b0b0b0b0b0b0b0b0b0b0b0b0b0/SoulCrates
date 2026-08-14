@@ -28,6 +28,7 @@ public final class CratePreviewMenu extends SoulMenu {
     private final BiConsumer<Player, Integer> openAction;
     private final Runnable backAction;
     private final Map<Integer, Integer> multiOpenSlots = new HashMap<>();
+    private int page;
 
     public CratePreviewMenu(
             UUID viewerId,
@@ -62,13 +63,21 @@ public final class CratePreviewMenu extends SoulMenu {
         if (player == null) {
             return;
         }
-        for (int slot = 0; slot < getInventory().getSize(); slot++) {
-            getInventory().setItem(slot, GuiItemFactory.filler(previewSettings.fillerMaterial));
-        }
-        List<Integer> rewardSlots = previewSettings.rewardSlots;
         List<RewardDefinition> rewards = crateDefinition.rewards();
-        for (int index = 0; index < rewardSlots.size() && index < rewards.size(); index++) {
-            RewardDefinition reward = rewards.get(index);
+        PagedRewardGuiRenderer.PageView pageView = PagedRewardGuiRenderer.normalizePage(
+                page,
+                rewards.size(),
+                previewSettings.grid.rewardSlots.size()
+        );
+        page = pageView.page();
+        PagedRewardGuiRenderer.applyGrid(getInventory(), previewSettings.grid, messageService, player, pageView);
+        List<Integer> rewardSlots = previewSettings.grid.rewardSlots;
+        for (int index = 0; index < rewardSlots.size(); index++) {
+            int rewardIndex = pageView.pageStartIndex() + index;
+            if (rewardIndex >= rewards.size()) {
+                break;
+            }
+            RewardDefinition reward = rewards.get(rewardIndex);
             getInventory().setItem(
                     rewardSlots.get(index),
                     GuiItemFactory.rewardPreview(
@@ -80,21 +89,37 @@ public final class CratePreviewMenu extends SoulMenu {
                     )
             );
         }
-        getInventory().setItem(previewSettings.openSlot, GuiItemFactory.actionButton(messageService, player, "preview-open-title", "preview-open-lore"));
+        getInventory().setItem(
+                previewSettings.openSlot,
+                GuiItemFactory.actionButton(
+                        messageService,
+                        player,
+                        previewSettings.openMaterial,
+                        "preview-open-title",
+                        "preview-open-lore"
+                )
+        );
         if (previewSettings.multiOpenButtons
                 && crateDefinition.opening().allowMultiOpen
                 && crateDefinition.opening().massOpening.enabled
                 && player.hasPermission(premiumOpeningSettings.multiOpenPermission)) {
             List<Integer> presets = crateDefinition.opening().massOpening.presets;
             List<Integer> slots = previewSettings.multiOpenSlots;
+            List<String> materials = previewSettings.multiOpenMaterials;
             for (int index = 0; index < presets.size() && index < slots.size(); index++) {
                 int amount = presets.get(index);
                 int slot = slots.get(index);
+                String material = index < materials.size() ? materials.get(index) : "IRON_BLOCK";
                 multiOpenSlots.put(slot, amount);
-                getInventory().setItem(slot, multiOpenButton(player, amount));
+                getInventory().setItem(slot, multiOpenButton(player, amount, material));
             }
         }
-        getInventory().setItem(previewSettings.backSlot, GuiItemFactory.cancelButton(messageService, player));
+        if (previewSettings.backSlot >= 0) {
+            getInventory().setItem(
+                    previewSettings.backSlot,
+                    GuiItemFactory.cancelButton(messageService, player, previewSettings.backMaterial)
+            );
+        }
     }
 
     @Override
@@ -103,6 +128,16 @@ public final class CratePreviewMenu extends SoulMenu {
             return;
         }
         Player player = click.player();
+        if (PagedRewardGuiRenderer.isPreviousPageSlot(previewSettings.grid, click.slot())) {
+            page = Math.max(0, page - 1);
+            refresh();
+            return;
+        }
+        if (PagedRewardGuiRenderer.isNextPageSlot(previewSettings.grid, click.slot())) {
+            page++;
+            refresh();
+            return;
+        }
         if (click.slot() == previewSettings.openSlot) {
             player.closeInventory();
             openAction.accept(player, 1);
@@ -114,7 +149,7 @@ public final class CratePreviewMenu extends SoulMenu {
             openAction.accept(player, amount);
             return;
         }
-        if (click.slot() == previewSettings.backSlot) {
+        if (previewSettings.backSlot >= 0 && click.slot() == previewSettings.backSlot) {
             player.closeInventory();
             if (backAction != null) {
                 backAction.run();
@@ -122,11 +157,21 @@ public final class CratePreviewMenu extends SoulMenu {
         }
     }
 
-    private ItemStack multiOpenButton(Player player, int amount) {
+    private ItemStack multiOpenButton(Player player, int amount, String materialName) {
         if (amount < 0) {
-            return GuiItemFactory.actionButton(messageService, player, "preview-open-all-title", "preview-open-all-lore");
+            return GuiItemFactory.actionButton(
+                    messageService,
+                    player,
+                    materialName,
+                    "preview-open-all-title",
+                    "preview-open-all-lore"
+            );
         }
-        ItemStack item = new ItemStack(Material.GOLD_BLOCK);
+        Material material = Material.matchMaterial(materialName);
+        if (material == null || material.isAir()) {
+            material = Material.IRON_BLOCK;
+        }
+        ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.displayName(messageService.component(

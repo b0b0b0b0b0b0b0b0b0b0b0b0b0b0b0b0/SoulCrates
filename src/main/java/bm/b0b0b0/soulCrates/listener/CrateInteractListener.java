@@ -68,7 +68,7 @@ public final class CrateInteractListener implements Listener {
             entityEvent.setCancelled(true);
         }
         if (event.getPlayer().isSneaking()) {
-            crateService.openPreview(event.getPlayer(), crateId.get());
+            crateService.openPreview(event.getPlayer(), crateId.get(), blockLocation);
             return;
         }
         playInteractSound(blockLocation.getBlock());

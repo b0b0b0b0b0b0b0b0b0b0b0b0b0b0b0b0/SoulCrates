@@ -26,6 +26,8 @@ permissions:
     default: true
   soulcrates.command.admin:
     default: op
+  soulcrates.break.bound:
+    default: false
   soulcrates.command.reload:
     default: op
   soulcrates.command.givekey:
@@ -45,8 +47,8 @@ permissions:
   soulcrates.command.givelootbox:
     default: op
   soulcrates.open.skip:
-    default: op
+    default: false
   soulcrates.open.instant:
-    default: op
+    default: false
   soulcrates.open.multi:
     default: true

@@ -10,10 +10,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -29,11 +31,16 @@ public final class MessageService {
     private final JavaPlugin plugin;
     private final MiniMessage miniMessage;
     private final Map<String, FileConfiguration> bundles = new LinkedHashMap<>();
+    private Supplier<String> forcedLocaleId = () -> null;
 
     public MessageService(JavaPlugin plugin) {
         this.plugin = plugin;
         this.miniMessage = MiniMessage.miniMessage();
         reload();
+    }
+
+    public void setForcedLocaleSupplier(Supplier<String> forcedLocaleId) {
+        this.forcedLocaleId = forcedLocaleId != null ? forcedLocaleId : () -> null;
     }
 
     public void reload() {
@@ -46,6 +53,10 @@ public final class MessageService {
             ensureJarLocaleFile(langDir, localeId);
         }
         loadDiscoveredLocaleFiles(langDir);
+    }
+
+    public List<String> loadedLocaleIds() {
+        return List.copyOf(bundles.keySet());
     }
 
     private void ensureJarLocaleFile(File langDir, String localeId) {
@@ -102,6 +113,9 @@ public final class MessageService {
 
     private static void mergeMissingKeys(FileConfiguration target, FileConfiguration defaults) {
         for (String key : defaults.getKeys(true)) {
+            if (defaults.isConfigurationSection(key)) {
+                continue;
+            }
             if (!target.contains(key)) {
                 target.set(key, defaults.get(key));
             }
@@ -109,10 +123,14 @@ public final class MessageService {
     }
 
     public String resolveLocaleId(UUID playerId) {
+        String configured = configuredLocaleId();
+        if (configured != null) {
+            return configured;
+        }
         if (playerId == null) {
             return DEFAULT_LOCALE;
         }
-        Player player = plugin.getServer().getPlayer(playerId);
+        Player player = Bukkit.getPlayer(playerId);
         if (player == null) {
             return DEFAULT_LOCALE;
         }
@@ -120,34 +138,34 @@ public final class MessageService {
     }
 
     public String resolveLocaleId(Player player) {
+        String configured = configuredLocaleId();
+        if (configured != null) {
+            return configured;
+        }
         if (player == null) {
             return DEFAULT_LOCALE;
         }
-        String locale = player.locale().toLanguageTag().toLowerCase(Locale.ROOT);
-        if (locale.startsWith("ru")) {
-            return "ru";
+        return normalizeLocaleId(player.locale());
+    }
+
+    public String resolveLocaleId(CommandSender sender) {
+        if (sender instanceof Player player) {
+            return resolveLocaleId(player);
         }
-        return DEFAULT_LOCALE;
+        String configured = configuredLocaleId();
+        return configured != null ? configured : DEFAULT_LOCALE;
+    }
+
+    public Locale javaLocale(UUID playerId) {
+        return Locale.forLanguageTag(resolveLocaleId(playerId));
     }
 
     public String raw(UUID playerId, String key) {
-        String localeId = resolveLocaleId(playerId);
-        FileConfiguration bundle = bundles.getOrDefault(localeId, bundles.get(DEFAULT_LOCALE));
-        if (bundle == null) {
-            return key;
-        }
-        String value = bundle.getString(key);
-        if (value == null) {
-            FileConfiguration fallback = bundles.get(DEFAULT_LOCALE);
-            if (fallback != null) {
-                value = fallback.getString(key);
-            }
-        }
-        return value == null ? key : value;
+        return template(resolveLocaleId(playerId), key);
     }
 
     public Component component(UUID playerId, String key, TagResolver... resolvers) {
-        String template = normalizePlaceholderSyntax(raw(playerId, key));
+        String template = normalizePlaceholderSyntax(template(resolveLocaleId(playerId), key));
         return miniMessage.deserialize(template, resolvers);
     }
 
@@ -168,7 +186,7 @@ public final class MessageService {
             send(player.getUniqueId(), key, resolvers);
             return;
         }
-        String template = raw(null, key);
+        String template = normalizePlaceholderSyntax(template(resolveLocaleId(sender), key));
         sender.sendMessage(miniMessage.deserialize(template, resolvers));
     }
 
@@ -182,6 +200,83 @@ public final class MessageService {
 
     public TagResolver placeholder(String name, String value) {
         return Placeholder.parsed(name, value == null ? "" : value);
+    }
+
+    private String configuredLocaleId() {
+        String raw = forcedLocaleId.get();
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return normalizeBundledLocaleId(raw);
+    }
+
+    private String normalizeBundledLocaleId(String raw) {
+        String language = raw.toLowerCase(Locale.ROOT).trim();
+        if (bundles.containsKey(language)) {
+            return language;
+        }
+        if (language.startsWith("ru") && bundles.containsKey("ru")) {
+            return "ru";
+        }
+        if (language.startsWith("en") && bundles.containsKey("en")) {
+            return "en";
+        }
+        int separator = language.indexOf('-');
+        if (separator > 0) {
+            String base = language.substring(0, separator);
+            if (bundles.containsKey(base)) {
+                return base;
+            }
+        }
+        return DEFAULT_LOCALE;
+    }
+
+    private String normalizeLocaleId(Locale locale) {
+        if (locale == null) {
+            return DEFAULT_LOCALE;
+        }
+        String language = locale.getLanguage().toLowerCase(Locale.ROOT);
+        if (!language.isBlank() && bundles.containsKey(language)) {
+            return language;
+        }
+        String tag = locale.toLanguageTag().toLowerCase(Locale.ROOT);
+        if (bundles.containsKey(tag)) {
+            return tag;
+        }
+        int separator = tag.indexOf('-');
+        if (separator > 0) {
+            String base = tag.substring(0, separator);
+            if (bundles.containsKey(base)) {
+                return base;
+            }
+        }
+        if (tag.startsWith("ru") && bundles.containsKey("ru")) {
+            return "ru";
+        }
+        return DEFAULT_LOCALE;
+    }
+
+    private FileConfiguration bundle(String localeId) {
+        FileConfiguration config = bundles.get(localeId);
+        if (config != null) {
+            return config;
+        }
+        FileConfiguration fallback = bundles.get(DEFAULT_LOCALE);
+        return fallback == null ? new YamlConfiguration() : fallback;
+    }
+
+    private String template(String localeId, String key) {
+        String value = bundle(localeId).getString(key);
+        if (value != null) {
+            return value;
+        }
+        if (!DEFAULT_LOCALE.equals(localeId)) {
+            value = bundle(DEFAULT_LOCALE).getString(key);
+            if (value != null) {
+                return value;
+            }
+        }
+        return key;
     }
 
     static String normalizePlaceholderSyntax(String template) {

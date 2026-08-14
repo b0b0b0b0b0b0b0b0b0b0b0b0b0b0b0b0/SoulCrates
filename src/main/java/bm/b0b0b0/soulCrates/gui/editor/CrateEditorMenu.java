@@ -58,7 +58,7 @@ public final class CrateEditorMenu extends SoulMenu {
             return;
         }
         for (int slot = 0; slot < getInventory().getSize(); slot++) {
-            getInventory().setItem(slot, GuiItemFactory.filler(editorSettings.fillerMaterial));
+            getInventory().setItem(slot, GuiItemFactory.filler(editorSettings.grid.borderFillerMaterial));
         }
         getInventory().setItem(4, GuiItemFactory.actionButton(messageService, player, "editor-rewards-open-title", "editor-rewards-open-lore"));
         getInventory().setItem(10, toggleItem(player, "editor-toggle-preview-title", mutableSettings.opening.previewEnabled));

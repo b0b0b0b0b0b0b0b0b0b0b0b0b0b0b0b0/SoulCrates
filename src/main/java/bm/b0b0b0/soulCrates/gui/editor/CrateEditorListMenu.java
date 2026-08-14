@@ -15,7 +15,6 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import net.kyori.adventure.text.Component;
 
 public final class CrateEditorListMenu extends SoulMenu {
 
@@ -50,7 +49,7 @@ public final class CrateEditorListMenu extends SoulMenu {
             return;
         }
         for (int slot = 0; slot < getInventory().getSize(); slot++) {
-            getInventory().setItem(slot, GuiItemFactory.filler(editorSettings.fillerMaterial));
+            getInventory().setItem(slot, GuiItemFactory.filler(editorSettings.grid.borderFillerMaterial));
         }
         List<Integer> slots = editorSettings.crateSlots;
         for (int index = 0; index < slots.size() && index < crates.size(); index++) {
@@ -58,11 +57,27 @@ public final class CrateEditorListMenu extends SoulMenu {
             ItemStack item = new ItemStack(Material.CHEST);
             ItemMeta meta = item.getItemMeta();
             if (meta != null) {
-                meta.displayName(Component.text(crate.displayName()));
+                meta.displayName(messageService.component(
+                        player.getUniqueId(),
+                        "editor-list-crate-name",
+                        messageService.placeholder("crate", crate.displayName())
+                ));
                 meta.lore(List.of(
-                        Component.text("ID: " + crate.id()),
-                        Component.text("Rewards: " + crate.rewards().size()),
-                        Component.text("Engine: " + crate.engineKind().name())
+                        messageService.component(
+                                player.getUniqueId(),
+                                "editor-list-line-id",
+                                messageService.placeholder("id", crate.id())
+                        ),
+                        messageService.component(
+                                player.getUniqueId(),
+                                "editor-list-line-rewards",
+                                messageService.placeholder("amount", Integer.toString(crate.rewards().size()))
+                        ),
+                        messageService.component(
+                                player.getUniqueId(),
+                                "editor-list-line-engine",
+                                messageService.placeholder("engine", crate.engineKind().name())
+                        )
                 ));
                 item.setItemMeta(meta);
             }

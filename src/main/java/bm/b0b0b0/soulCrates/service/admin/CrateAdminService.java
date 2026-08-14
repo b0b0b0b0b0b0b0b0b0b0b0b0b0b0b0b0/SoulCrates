@@ -1,5 +1,9 @@
 package bm.b0b0b0.soulCrates.service.admin;
 
+import bm.b0b0b0.soulCrates.config.AnimationPresetRegistry;
+import bm.b0b0b0.soulCrates.config.ConfigurationLoader;
+import bm.b0b0b0.soulCrates.config.CrateDefinitionLoader;
+import bm.b0b0b0.soulCrates.config.settings.CrateDefinitionSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
@@ -13,6 +17,7 @@ import bm.b0b0b0.soulCrates.service.player.PlayerDataService;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +39,7 @@ public final class CrateAdminService {
     private final LootBoxService lootBoxService;
     private final ClaimService claimService;
     private final KeyCountResolver keyCountResolver;
+    private ConfigurationLoader configurationLoader;
 
     public CrateAdminService(
             JavaPlugin plugin,
@@ -59,6 +65,10 @@ public final class CrateAdminService {
         this.lootBoxService = lootBoxService;
         this.claimService = claimService;
         this.keyCountResolver = keyCountResolver;
+    }
+
+    public void attachConfigurationLoader(ConfigurationLoader configurationLoader) {
+        this.configurationLoader = configurationLoader;
     }
 
     public void giveLootBox(CommandSender sender, Player target, String crateId, int amount) {
@@ -91,6 +101,10 @@ public final class CrateAdminService {
     }
 
     public void bindCrate(Player player, String crateId, Location location) {
+        bindCrate(player, crateId, location, null);
+    }
+
+    public void bindCrate(Player player, String crateId, Location location, String presetId) {
         if (!player.hasPermission("soulcrates.command.admin")) {
             messageService.send(player.getUniqueId(), "no-permission");
             return;
@@ -99,21 +113,60 @@ public final class CrateAdminService {
             messageService.send(player.getUniqueId(), "startup-not-ready");
             return;
         }
-        Optional<CrateDefinition> crateOptional = crateRegistry.find(crateId);
+        String normalizedCrateId = crateId.toLowerCase(Locale.ROOT);
+        if (presetId != null && !presetId.isBlank() && !AnimationPresetRegistry.isKnownPreset(presetId)) {
+            messageService.send(
+                    player.getUniqueId(),
+                    "setcrate-invalid-preset",
+                    messageService.placeholder("preset", presetId)
+            );
+            return;
+        }
+        Optional<CrateDefinition> crateOptional = ensureCrateDefinition(normalizedCrateId, presetId);
         if (crateOptional.isEmpty()) {
             messageService.send(player.getUniqueId(), "crate-not-found", messageService.placeholder("crate", crateId));
             return;
         }
-        locationService.bind(location, crateId).thenRun(() -> PluginSchedulers.run(plugin, player, () -> {
+        CrateDefinition crate = crateOptional.get();
+        locationService.bind(location, normalizedCrateId).thenRun(() -> PluginSchedulers.run(plugin, player, () -> {
             if (idleCrateDisplayService != null) {
-                idleCrateDisplayService.onBind(location, crateId);
+                idleCrateDisplayService.onBind(location, normalizedCrateId);
+            }
+            if (presetId != null && !presetId.isBlank()) {
+                messageService.send(
+                        player.getUniqueId(),
+                        "setcrate-success-preset",
+                        messageService.placeholder("crate", crate.displayName()),
+                        messageService.placeholder("preset", presetId.trim().toUpperCase(Locale.ROOT))
+                );
+                return;
             }
             messageService.send(
                     player.getUniqueId(),
                     "setcrate-success",
-                    messageService.placeholder("crate", crateOptional.get().displayName())
+                    messageService.placeholder("crate", crate.displayName())
             );
         }));
+    }
+
+    private Optional<CrateDefinition> ensureCrateDefinition(String crateId, String presetId) {
+        Optional<CrateDefinition> existing = crateRegistry.find(crateId);
+        if (presetId == null || presetId.isBlank()) {
+            return existing;
+        }
+        if (configurationLoader == null) {
+            return existing;
+        }
+        CrateDefinitionSettings settings = configurationLoader.loadCrateSettings(crateId);
+        settings.id = crateId;
+        if (existing.isEmpty()) {
+            settings.displayName = titleCase(crateId);
+        }
+        AnimationPresetRegistry.applyPreset(settings.animations, presetId);
+        configurationLoader.saveCrateSettings(settings);
+        CrateDefinition definition = CrateDefinitionLoader.toDefinition(settings);
+        crateRegistry.register(definition);
+        return Optional.of(definition);
     }
 
     public void unbindCrate(Player player, Location location) {
@@ -333,5 +386,26 @@ public final class CrateAdminService {
             return;
         }
         sender.sendMessage(messageService.prefixed(null, key, resolvers));
+    }
+
+    private static String titleCase(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "Crate";
+        }
+        String[] parts = raw.toLowerCase(Locale.ROOT).split("[\\s_-]+");
+        StringBuilder builder = new StringBuilder();
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (!builder.isEmpty()) {
+                builder.append(' ');
+            }
+            builder.append(Character.toUpperCase(part.charAt(0)));
+            if (part.length() > 1) {
+                builder.append(part.substring(1));
+            }
+        }
+        return builder.isEmpty() ? "Crate" : builder.toString();
     }
 }

@@ -1,6 +1,7 @@
 package bm.b0b0b0.soulCrates.command;
 
 import bm.b0b0b0.soulCrates.bootstrap.SoulCratesCore;
+import bm.b0b0b0.soulCrates.config.AnimationPresetRegistry;
 import bm.b0b0b0.soulCrates.hook.citizens.CitizensBridge;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import java.util.ArrayList;
@@ -81,9 +82,14 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 3) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "givekey", "givelootbox" -> crateIds(args[2]);
-                case "paykey" -> crateIds(args[2]);
+                case "givekey", "givelootbox", "paykey" -> crateIds(args[2]);
                 case "open" -> amountSuggestions(args[2]);
+                case "setcrate" -> {
+                    if ("remove".equalsIgnoreCase(args[1])) {
+                        yield List.of();
+                    }
+                    yield presetIds(args[2]);
+                }
                 default -> List.of();
             };
         }
@@ -264,7 +270,8 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
         if (args.length < 2) {
             return false;
         }
-        core.crateService().bindCrate(player, args[1], block.getLocation());
+        String preset = args.length >= 3 ? args[2] : null;
+        core.crateService().bindCrate(player, args[1], block.getLocation(), preset);
         return true;
     }
 
@@ -419,6 +426,12 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
         return core.crateService().crateRegistry().list().stream()
                 .map(crate -> crate.id())
                 .filter(id -> id.startsWith(prefix.toLowerCase(Locale.ROOT)))
+                .toList();
+    }
+
+    private List<String> presetIds(String prefix) {
+        return AnimationPresetRegistry.presetIds().stream()
+                .filter(id -> id.toLowerCase(Locale.ROOT).startsWith(prefix.toLowerCase(Locale.ROOT)))
                 .toList();
     }
 

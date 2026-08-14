@@ -35,6 +35,7 @@ public final class CrateDefinitionLoader {
         if (!Files.exists(defaultFile)) {
             SerializedConfigReloader.reload(new CrateDefinitionSettings(), defaultFile);
         }
+        ensureExampleCrates(cratesDirectory);
         List<CrateDefinition> crates = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(cratesDirectory, "*.yml")) {
             for (Path file : stream) {
@@ -49,6 +50,34 @@ public final class CrateDefinitionLoader {
             throw new IllegalStateException("Cannot load crate definitions", exception);
         }
         return crates;
+    }
+
+    private static void ensureExampleCrates(Path cratesDirectory) {
+        ensureExampleCrate(cratesDirectory, "blazing", "Blazing Crate", "BLAZING", "#ff5500");
+        ensureExampleCrate(cratesDirectory, "arcade", "Arcade Crate", "ARCADE", "#a855f7");
+        ensureExampleCrate(cratesDirectory, "keystorm", "Keystorm Crate", "KEYSTORM", "#a78bfa");
+        ensureExampleCrate(cratesDirectory, "classic", "Classic Crate", "CLASSIC", "#cccccc");
+    }
+
+    private static void ensureExampleCrate(
+            Path cratesDirectory,
+            String id,
+            String displayName,
+            String preset,
+            String idleColor
+    ) {
+        Path file = cratesDirectory.resolve(id + ".yml");
+        if (Files.exists(file)) {
+            return;
+        }
+        CrateDefinitionSettings settings = new CrateDefinitionSettings();
+        settings.id = id;
+        settings.displayName = displayName;
+        AnimationPresetRegistry.applyPreset(settings.animations, preset);
+        if (!settings.idleEffects.isEmpty()) {
+            settings.idleEffects.get(0).color = idleColor;
+        }
+        settings.save(file);
     }
 
     public static CrateDefinition toDefinition(CrateDefinitionSettings settings) {

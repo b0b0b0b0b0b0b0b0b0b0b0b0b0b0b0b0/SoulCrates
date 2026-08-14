@@ -216,6 +216,7 @@ public final class CrateService {
                 claimService,
                 keyCountResolver
         );
+        adminService.attachConfigurationLoader(configurationLoader);
         if (broadcastService != null) {
             broadcastService.applySettings(pluginConfig.cratesSettings().broadcast);
         }
@@ -329,10 +330,14 @@ public final class CrateService {
     }
 
     public void openPreview(Player player, String crateId) {
+        openPreview(player, crateId, null);
+    }
+
+    public void openPreview(Player player, String crateId, Location openLocation) {
         if (!ready(player)) {
             return;
         }
-        menuService.openPreview(player, crateId);
+        menuService.openPreview(player, crateId, openLocation);
     }
 
     public void openEditor(Player player) {
@@ -442,6 +447,10 @@ public final class CrateService {
 
     public void bindCrate(Player player, String crateId, Location location) {
         adminService.bindCrate(player, crateId, location);
+    }
+
+    public void bindCrate(Player player, String crateId, Location location, String presetId) {
+        adminService.bindCrate(player, crateId, location, presetId);
     }
 
     public void unbindCrate(Player player, Location location) {

@@ -20,7 +20,7 @@ public final class OpeningSettings extends YamlSerializable {
     @Comment({
             @CommentValue("Show confirmation GUI after preview or before open."),
     })
-    public boolean confirmEnabled = true;
+    public boolean confirmEnabled = false;
 
     @Comment({
             @CommentValue("Virtual keys consumed per open."),
@@ -41,6 +41,11 @@ public final class OpeningSettings extends YamlSerializable {
             @CommentValue("Allow multi-open bundles for this crate."),
     })
     public boolean allowMultiOpen = true;
+
+    @Comment({
+            @CommentValue("Server chat broadcast on win for this crate. false = never broadcast this crate."),
+    })
+    public boolean broadcastOpens = true;
 
     @Comment({
             @CommentValue("RANDOM = roll pool. SELECT = player picks reward from menu."),

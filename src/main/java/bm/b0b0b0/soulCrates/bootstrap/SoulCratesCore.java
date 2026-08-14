@@ -12,7 +12,9 @@ import bm.b0b0b0.soulCrates.hook.HookRegistry;
 import bm.b0b0b0.soulCrates.hook.modelengine.ModelEngineHookProvider;
 import bm.b0b0b0.soulCrates.hook.placeholder.PlaceholderHookProvider;
 import bm.b0b0b0.soulCrates.hook.vault.VaultHookProvider;
+import bm.b0b0b0.soulCrates.config.settings.MessagesSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
+import bm.b0b0b0.soulCrates.listener.CrateBlockProtectListener;
 import bm.b0b0b0.soulCrates.listener.CrateChunkListener;
 import bm.b0b0b0.soulCrates.listener.CrateInteractListener;
 import bm.b0b0b0.soulCrates.listener.LootBoxListener;
@@ -75,6 +77,7 @@ public final class SoulCratesCore {
     private RedisPlayerMirror redisMirror;
     private RerollService rerollService;
     private CrateInteractListener crateInteractListener;
+    private CrateBlockProtectListener crateBlockProtectListener;
     private DatabaseBootstrap databaseBootstrap;
     private SoulCratesApi soulCratesApi;
     private CratesCommand cratesCommand;
@@ -94,6 +97,8 @@ public final class SoulCratesCore {
         pluginConfig = configurationLoader.load();
         startupLog.stepOk("Config loaded — crates=" + pluginConfig.crateDefinitions().size());
         messageService = new MessageService(plugin);
+        applyMessageLocaleSettings();
+        startupLog.stepOk("Messages — lang: " + String.join(", ", messageService.loadedLocaleIds()));
         crateRegistry = new CrateRegistry();
         displayEngineRegistry = new DisplayEngineRegistry(plugin);
         sessionRegistry = new SessionRegistry(plugin, pluginConfig.cratesSettings().sessionTimeoutSeconds);
@@ -104,9 +109,9 @@ public final class SoulCratesCore {
         hookRegistry.registerProvider(new PlaceholderHookProvider(() -> crateService));
         hookRegistry.registerHooks();
         rewardDeliveryService = new RewardDeliveryService(plugin, hookRegistry);
-        phaseFactory = new PhaseFactory(plugin, messageService, pluginConfig.guiSpinnerSettings());
-        rerollService = new RerollService(rewardRollService, hookRegistry);
         broadcastService = new BroadcastService(pluginConfig.cratesSettings().broadcast, messageService);
+        phaseFactory = new PhaseFactory(plugin, messageService, broadcastService, pluginConfig.guiSpinnerSettings());
+        rerollService = new RerollService(rewardRollService, hookRegistry);
         crateService = new CrateService(
                 plugin,
                 configurationLoader,
@@ -229,7 +234,15 @@ public final class SoulCratesCore {
                     locationService,
                     pluginConfig.cratesSettings().idleDisplay
             );
+            crateBlockProtectListener = new CrateBlockProtectListener(
+                    plugin,
+                    messageService,
+                    locationService,
+                    idleCrateDisplayService,
+                    pluginConfig.cratesSettings().idleDisplay
+            );
             plugin.getServer().getPluginManager().registerEvents(crateInteractListener, plugin);
+            plugin.getServer().getPluginManager().registerEvents(crateBlockProtectListener, plugin);
             plugin.getServer().getPluginManager().registerEvents(new NpcInteractListener(crateService, npcService), plugin);
             plugin.getServer().getPluginManager().registerEvents(new LootBoxListener(crateService, lootBoxService), plugin);
             plugin.getServer().getPluginManager().registerEvents(new PlayerJoinListener(plugin, playerDataService, claimService, crateRegistry), plugin);
@@ -249,7 +262,8 @@ public final class SoulCratesCore {
     public void reload() {
         pluginConfig = configurationLoader.load();
         messageService.reload();
-        phaseFactory = new PhaseFactory(plugin, messageService, pluginConfig.guiSpinnerSettings());
+        applyMessageLocaleSettings();
+        phaseFactory = new PhaseFactory(plugin, messageService, broadcastService, pluginConfig.guiSpinnerSettings());
         broadcastService.applySettings(pluginConfig.cratesSettings().broadcast);
         if (claimService != null) {
             claimService.applySettings(pluginConfig.cratesSettings().claim);
@@ -264,7 +278,20 @@ public final class SoulCratesCore {
         if (crateInteractListener != null) {
             crateInteractListener.applySettings(pluginConfig.cratesSettings().idleDisplay);
         }
+        if (crateBlockProtectListener != null) {
+            crateBlockProtectListener.applySettings(pluginConfig.cratesSettings().idleDisplay);
+        }
         startupLog.stepOk("Reload complete — crates=" + pluginConfig.crateDefinitions().size());
+    }
+
+    private void applyMessageLocaleSettings() {
+        messageService.setForcedLocaleSupplier(() -> {
+            MessagesSettings messages = pluginConfig.cratesSettings().messages;
+            if (messages == null || !"SERVER".equalsIgnoreCase(messages.localeMode)) {
+                return null;
+            }
+            return messages.serverLocale;
+        });
     }
 
     public void disable() {

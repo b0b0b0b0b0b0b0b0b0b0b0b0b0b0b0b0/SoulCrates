@@ -4,6 +4,7 @@ import bm.b0b0b0.soulCrates.config.settings.CrateDefinitionSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiEditorSettings;
 import bm.b0b0b0.soulCrates.config.settings.RewardEntrySettings;
 import bm.b0b0b0.soulCrates.gui.GuiItemFactory;
+import bm.b0b0b0.soulCrates.gui.PagedRewardGuiRenderer;
 import bm.b0b0b0.soulCrates.gui.SoulMenu;
 import bm.b0b0b0.soulCrates.gui.SoulMenuClick;
 import bm.b0b0b0.soulCrates.lang.MessageService;
@@ -14,12 +15,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.function.Consumer;
-import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class CrateRewardListMenu extends SoulMenu {
@@ -31,6 +29,7 @@ public final class CrateRewardListMenu extends SoulMenu {
     private final CrateDefinitionSettings mutableSettings;
     private final Consumer<CrateDefinitionSettings> saveAction;
     private final Runnable backAction;
+    private int page;
 
     public CrateRewardListMenu(
             JavaPlugin plugin,
@@ -42,7 +41,7 @@ public final class CrateRewardListMenu extends SoulMenu {
             Consumer<CrateDefinitionSettings> saveAction,
             Runnable backAction
     ) {
-        super(viewerId, 54, messageService.component(viewerId, "editor-rewards-title"));
+        super(viewerId, normalizeSize(editorSettings.size), messageService.component(viewerId, "editor-rewards-title"));
         this.plugin = plugin;
         this.messageService = messageService;
         this.editorSettings = editorSettings;
@@ -60,21 +59,47 @@ public final class CrateRewardListMenu extends SoulMenu {
         if (player == null) {
             return;
         }
-        for (int slot = 0; slot < getInventory().getSize(); slot++) {
-            getInventory().setItem(slot, GuiItemFactory.filler(editorSettings.fillerMaterial));
-        }
         List<RewardEntrySettings> rewards = mutableSettings.rewards;
-        for (int index = 0; index < rewards.size() && index < 45; index++) {
-            RewardEntrySettings entry = rewards.get(index);
-            getInventory().setItem(index, GuiItemFactory.rewardPreview(
-                    messageService,
-                    player,
-                    toDefinition(entry),
-                    chancePercent(entry, rewards)
-            ));
+        PagedRewardGuiRenderer.PageView pageView = PagedRewardGuiRenderer.normalizePage(
+                page,
+                rewards.size(),
+                editorSettings.grid.rewardSlots.size()
+        );
+        page = pageView.page();
+        PagedRewardGuiRenderer.applyGrid(getInventory(), editorSettings.grid, messageService, player, pageView);
+        List<Integer> rewardSlots = editorSettings.grid.rewardSlots;
+        for (int index = 0; index < rewardSlots.size(); index++) {
+            int rewardIndex = pageView.pageStartIndex() + index;
+            if (rewardIndex >= rewards.size()) {
+                break;
+            }
+            RewardEntrySettings entry = rewards.get(rewardIndex);
+            getInventory().setItem(
+                    rewardSlots.get(index),
+                    GuiItemFactory.rewardPreview(
+                            messageService,
+                            player,
+                            toDefinition(entry),
+                            chancePercent(entry, rewards)
+                    )
+            );
         }
-        getInventory().setItem(49, GuiItemFactory.actionButton(messageService, player, "editor-reward-add-title", "editor-reward-add-lore"));
-        getInventory().setItem(53, GuiItemFactory.cancelButton(messageService, player));
+        getInventory().setItem(
+                editorSettings.addRewardSlot,
+                GuiItemFactory.actionButton(
+                        messageService,
+                        player,
+                        editorSettings.addRewardMaterial,
+                        "editor-reward-add-title",
+                        "editor-reward-add-lore"
+                )
+        );
+        if (editorSettings.backSlot >= 0) {
+            getInventory().setItem(
+                    editorSettings.backSlot,
+                    GuiItemFactory.cancelButton(messageService, player, editorSettings.backMaterial)
+            );
+        }
     }
 
     @Override
@@ -83,24 +108,49 @@ public final class CrateRewardListMenu extends SoulMenu {
             return;
         }
         Player player = click.player();
-        if (click.slot() == 53) {
+        if (PagedRewardGuiRenderer.isPreviousPageSlot(editorSettings.grid, click.slot())) {
+            page = Math.max(0, page - 1);
+            refresh();
+            return;
+        }
+        if (PagedRewardGuiRenderer.isNextPageSlot(editorSettings.grid, click.slot())) {
+            page++;
+            refresh();
+            return;
+        }
+        if (editorSettings.backSlot >= 0 && click.slot() == editorSettings.backSlot) {
             player.closeInventory();
             if (backAction != null) {
                 backAction.run();
             }
             return;
         }
-        if (click.slot() == 49) {
+        if (click.slot() == editorSettings.addRewardSlot) {
             RewardEntrySettings entry = new RewardEntrySettings();
             entry.id = "reward_" + (mutableSettings.rewards.size() + 1);
             entry.displayName = "New Reward";
             entry.material = Material.PAPER.name();
             mutableSettings.rewards.add(entry);
+            page = PagedRewardGuiRenderer.normalizePage(
+                    Integer.MAX_VALUE,
+                    mutableSettings.rewards.size(),
+                    editorSettings.grid.rewardSlots.size()
+            ).page();
             openEdit(player, mutableSettings.rewards.size() - 1);
             return;
         }
-        if (click.slot() >= 0 && click.slot() < mutableSettings.rewards.size() && click.slot() < 45) {
-            openEdit(player, click.slot());
+        int slotIndex = PagedRewardGuiRenderer.rewardSlotIndex(editorSettings.grid, click.slot());
+        if (slotIndex < 0) {
+            return;
+        }
+        PagedRewardGuiRenderer.PageView pageView = PagedRewardGuiRenderer.normalizePage(
+                page,
+                mutableSettings.rewards.size(),
+                editorSettings.grid.rewardSlots.size()
+        );
+        int rewardIndex = pageView.pageStartIndex() + slotIndex;
+        if (rewardIndex >= 0 && rewardIndex < mutableSettings.rewards.size()) {
+            openEdit(player, rewardIndex);
         }
     }
 
@@ -145,5 +195,12 @@ public final class CrateRewardListMenu extends SoulMenu {
             return 0.0;
         }
         return Math.max(0.0, entry.weight) * 100.0 / total;
+    }
+
+    private static int normalizeSize(int size) {
+        if (size < 9 || size % 9 != 0) {
+            return 54;
+        }
+        return size;
     }
 }

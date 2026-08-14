@@ -22,6 +22,9 @@ public final class CratesSettings extends YamlSerializable {
     public DatabaseSettings database = new DatabaseSettings();
 
     @NewLine
+    public MessagesSettings messages = new MessagesSettings();
+
+    @NewLine
     @Comment({
             @CommentValue("Extra commands that run the same as /soulcrates."),
     })

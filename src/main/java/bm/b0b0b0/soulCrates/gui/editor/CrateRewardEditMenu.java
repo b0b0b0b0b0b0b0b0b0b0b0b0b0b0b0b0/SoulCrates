@@ -62,7 +62,7 @@ public final class CrateRewardEditMenu extends SoulMenu {
         }
         RewardEntrySettings entry = entry();
         for (int slot = 0; slot < getInventory().getSize(); slot++) {
-            getInventory().setItem(slot, GuiItemFactory.filler(editorSettings.fillerMaterial));
+            getInventory().setItem(slot, GuiItemFactory.filler(editorSettings.grid.borderFillerMaterial));
         }
         getInventory().setItem(4, GuiItemFactory.rewardPreview(
                 messageService,

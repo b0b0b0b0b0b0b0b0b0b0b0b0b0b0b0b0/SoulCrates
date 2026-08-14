@@ -43,6 +43,16 @@ public final class IdleDisplaySettings extends YamlSerializable {
 
     public float interactSoundPitch = 1.1f;
 
+    @Comment({
+            @CommentValue("Cancel breaking/explosions/pistons on bound crate blocks."),
+    })
+    public boolean protectBoundBlocks = true;
+
+    @Comment({
+            @CommentValue("Permission to break a bound crate block (also unbinds). Use /sc setcrate remove instead."),
+    })
+    public String breakBypassPermission = "soulcrates.break.bound";
+
     @net.elytrium.serializer.annotations.NewLine
     public HologramSettings hologram = new HologramSettings();
 }

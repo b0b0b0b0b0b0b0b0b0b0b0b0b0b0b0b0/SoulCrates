@@ -27,6 +27,7 @@ public final class CrateDefinitionSettings extends YamlSerializable {
     public java.util.List<IdleEffectSettings> idleEffects = defaultIdleEffects();
 
     @NewLine
+    @Comment({@CommentValue("World roulette position during open (BlockDisplay carousel).")})
     public AnimationDisplaySettings animationDisplay = new AnimationDisplaySettings();
 
     @NewLine

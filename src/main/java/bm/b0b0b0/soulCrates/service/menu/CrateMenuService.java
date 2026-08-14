@@ -20,6 +20,7 @@ import bm.b0b0b0.soulCrates.service.shop.KeyShopService;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import java.util.Optional;
 import java.util.function.Consumer;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -68,12 +69,17 @@ public final class CrateMenuService {
     }
 
     public void openPreview(Player player, String crateId) {
+        openPreview(player, crateId, null);
+    }
+
+    public void openPreview(Player player, String crateId, Location openLocation) {
         Optional<CrateDefinition> crateOptional = crateRegistry.find(crateId);
         if (crateOptional.isEmpty()) {
             messageService.send(player.getUniqueId(), "crate-not-found", messageService.placeholder("crate", crateId));
             return;
         }
         CrateDefinition crate = crateOptional.get();
+        Location resolved = openLocation == null ? player.getLocation() : openLocation;
         CratePreviewMenu menu = new CratePreviewMenu(
                 player.getUniqueId(),
                 messageService,
@@ -81,7 +87,7 @@ public final class CrateMenuService {
                 pluginConfig.cratesSettings().premiumOpening,
                 crate,
                 rewardRollService,
-                (target, amount) -> openCallbacks.proceedOpenFlow(target, crate, target.getLocation(), amount),
+                (target, amount) -> openCallbacks.proceedOpenFlow(target, crate, resolved, amount),
                 null
         );
         PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));
