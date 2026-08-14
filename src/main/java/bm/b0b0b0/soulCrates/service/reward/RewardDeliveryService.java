@@ -2,7 +2,6 @@ package bm.b0b0b0.soulCrates.service.reward;
 
 import bm.b0b0b0.soulCrates.config.settings.ClaimSettings;
 import bm.b0b0b0.soulCrates.hook.HookRegistry;
-import bm.b0b0b0.soulCrates.hook.vault.VaultEconomyHook;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.service.claim.ClaimService;
 import java.util.Locale;
@@ -51,8 +50,12 @@ public final class RewardDeliveryService {
             deliverGrant(player, grant);
         }
         for (String command : reward.commands()) {
+            if (command == null || command.isBlank()) {
+                continue;
+            }
             String parsed = command
                     .replace("{player}", player.getName())
+                    .replace("{uuid}", player.getUniqueId().toString())
                     .replace("{crate}", crateId)
                     .replace("{reward}", reward.id());
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), parsed);
@@ -61,11 +64,7 @@ public final class RewardDeliveryService {
 
     private boolean hasItemGrants(RewardDefinition reward) {
         for (String grant : reward.grants()) {
-            if (grant == null || grant.isBlank()) {
-                continue;
-            }
-            String normalized = grant.toLowerCase(Locale.ROOT);
-            if (!normalized.startsWith("vault:")) {
+            if (isMaterialGrant(grant)) {
                 return true;
             }
         }
@@ -75,22 +74,9 @@ public final class RewardDeliveryService {
     private boolean hasInventorySpace(Player player, RewardDefinition reward) {
         int neededStacks = 0;
         for (String grant : reward.grants()) {
-            if (grant == null || grant.isBlank()) {
-                continue;
+            if (isMaterialGrant(grant)) {
+                neededStacks++;
             }
-            String normalized = grant.toLowerCase(Locale.ROOT);
-            if (normalized.startsWith("vault:")) {
-                continue;
-            }
-            int separator = grant.indexOf(':');
-            if (separator <= 0) {
-                continue;
-            }
-            Material material = Material.matchMaterial(grant.substring(0, separator));
-            if (material == null || material.isAir()) {
-                continue;
-            }
-            neededStacks++;
         }
         if (neededStacks <= 0) {
             return true;
@@ -109,17 +95,20 @@ public final class RewardDeliveryService {
             return;
         }
         String normalized = grant.toLowerCase(Locale.ROOT);
-        if (normalized.startsWith("vault:")) {
-            double amount = parseDouble(normalized.substring("vault:".length()));
-            hookRegistry.findHook(VaultEconomyHook.class).ifPresent(hook -> hook.deposit(player.getUniqueId(), amount));
+        if (normalized.startsWith("vault:") || normalized.startsWith("money:")) {
+            plugin.getLogger().warning(
+                    "Reward grant '" + grant + "' is ignored. Put money in commands, e.g. eco give {player} 1000"
+            );
             return;
         }
         int separator = grant.indexOf(':');
         if (separator <= 0) {
+            plugin.getLogger().warning("Invalid reward grant '" + grant + "'. Expected MATERIAL:amount");
             return;
         }
         Material material = Material.matchMaterial(grant.substring(0, separator));
         if (material == null || material.isAir()) {
+            plugin.getLogger().warning("Unknown material in reward grant '" + grant + "'");
             return;
         }
         int amount = (int) Math.max(1L, Math.round(parseDouble(grant.substring(separator + 1))));
@@ -128,6 +117,22 @@ public final class RewardDeliveryService {
         for (ItemStack leftover : overflow.values()) {
             player.getWorld().dropItemNaturally(player.getLocation(), leftover);
         }
+    }
+
+    private static boolean isMaterialGrant(String grant) {
+        if (grant == null || grant.isBlank()) {
+            return false;
+        }
+        String normalized = grant.toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("vault:") || normalized.startsWith("money:")) {
+            return false;
+        }
+        int separator = grant.indexOf(':');
+        if (separator <= 0) {
+            return false;
+        }
+        Material material = Material.matchMaterial(grant.substring(0, separator));
+        return material != null && !material.isAir();
     }
 
     private static double parseDouble(String raw) {

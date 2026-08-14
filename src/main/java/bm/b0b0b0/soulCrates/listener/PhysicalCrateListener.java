@@ -116,9 +116,21 @@ public final class PhysicalCrateListener implements Listener {
                             for (ItemStack leftover : overflow.values()) {
                                 player.getWorld().dropItemNaturally(player.getLocation(), leftover);
                             }
+                            messageService.send(
+                                    player.getUniqueId(),
+                                    "physical-crate-picked-up",
+                                    messageService.placeholder("crate", crate.displayName())
+                            );
                         });
+                    } else {
+                        crateRegistry.find(instance.crateId()).ifPresent(crate ->
+                                messageService.send(
+                                        player.getUniqueId(),
+                                        "physical-crate-picked-up",
+                                        messageService.placeholder("crate", crate.displayName())
+                                )
+                        );
                     }
-                    messageService.send(player.getUniqueId(), "physical-crate-picked-up");
                 })
         );
     }

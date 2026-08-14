@@ -1,13 +1,16 @@
 package bm.b0b0b0.soulCrates.animation;
 
+import bm.b0b0b0.soulCrates.config.settings.AnimationPhaseProperties;
 import bm.b0b0b0.soulCrates.config.settings.AnimationPhaseSettings;
 import bm.b0b0b0.soulCrates.config.settings.RarityTierSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.service.reward.BroadcastService;
+import bm.b0b0b0.soulCrates.service.reward.RewardDisplayService;
 import bm.b0b0b0.soulCrates.session.CrateOpeningSession;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -40,9 +43,6 @@ import org.joml.Vector3f;
 public final class ShulkerPickPhase implements PhaseRunner {
 
     private static final int POD_COUNT = 6;
-    private static final double RADIUS = 3.15;
-    private static final double PLAYER_BOUND_RADIUS = 2.45;
-    private static final double PLAYER_BOUND_RADIUS_SQ = PLAYER_BOUND_RADIUS * PLAYER_BOUND_RADIUS;
     private static final float POD_SCALE = 0.82f;
     private static final float LABEL_GAP = 0.42f;
     private static final double FLOAT_BASE = 0.14;
@@ -89,6 +89,8 @@ public final class ShulkerPickPhase implements PhaseRunner {
     private final BroadcastService broadcastService;
     private final CrateDefinition crateDefinition;
     private final RewardDefinition rolledReward;
+    private final boolean confinePlayer;
+    private final double confineRadius;
 
     private Stage stage = Stage.PICKING;
     private int stageTicks;
@@ -116,6 +118,9 @@ public final class ShulkerPickPhase implements PhaseRunner {
         this.broadcastService = broadcastService;
         this.crateDefinition = crateDefinition;
         this.rolledReward = rolledReward;
+        AnimationPhaseProperties properties = settings.properties == null ? new AnimationPhaseProperties() : settings.properties;
+        this.confinePlayer = properties.confinePlayer;
+        this.confineRadius = Math.max(0.5, properties.confineRadius);
     }
 
     public static Optional<ShulkerPickPhase> activePhase(UUID playerId) {
@@ -138,7 +143,7 @@ public final class ShulkerPickPhase implements PhaseRunner {
         revealOthersDone = false;
         revealSent = false;
         picked = false;
-        center = resolveGroundCenter(player, session);
+        center = PickArenaLayout.resolvePlayerCenter(player);
         hidePhysicalCrateBlock(session);
         List<RewardDefinition> enabled = crateDefinition.rewards().stream().filter(RewardDefinition::enabled).toList();
         if (enabled.isEmpty()) {
@@ -147,7 +152,9 @@ public final class ShulkerPickPhase implements PhaseRunner {
         buildPods(player, enabled, session);
         startBossBar(player);
         restoreCollidable = player.isCollidable();
-        player.setCollidable(false);
+        if (confinePlayer) {
+            player.setCollidable(false);
+        }
         ACTIVE.put(player.getUniqueId(), this);
         World world = center.getWorld();
         if (world != null) {
@@ -164,7 +171,9 @@ public final class ShulkerPickPhase implements PhaseRunner {
             return;
         }
         stageTicks++;
-        confinePlayer(player);
+        if (confinePlayer) {
+            confinePlayer(player);
+        }
         updatePodMotion();
         switch (stage) {
             case PICKING -> tickPicking(player);
@@ -290,36 +299,15 @@ public final class ShulkerPickPhase implements PhaseRunner {
     }
 
     public boolean shouldConfinePlayer() {
-        return stage == Stage.PICKING || stage == Stage.WINNER_BOUNCE;
+        return confinePlayer && (stage == Stage.PICKING || stage == Stage.WINNER_BOUNCE);
     }
 
     public boolean isOutsideBoundary(Location location) {
-        if (center == null || location == null || location.getWorld() == null) {
-            return false;
-        }
-        if (center.getWorld() != location.getWorld()) {
-            return true;
-        }
-        double dx = location.getX() - center.getX();
-        double dz = location.getZ() - center.getZ();
-        return dx * dx + dz * dz > PLAYER_BOUND_RADIUS_SQ;
+        return PickArenaLayout.isOutsideBoundary(center, location, confineRadius);
     }
 
     public Location clampLocation(Location location) {
-        if (center == null || location == null) {
-            return location;
-        }
-        double dx = location.getX() - center.getX();
-        double dz = location.getZ() - center.getZ();
-        double distSq = dx * dx + dz * dz;
-        if (distSq <= PLAYER_BOUND_RADIUS_SQ) {
-            return location;
-        }
-        double dist = Math.sqrt(distSq);
-        Location clamped = location.clone();
-        clamped.setX(center.getX() + dx / dist * PLAYER_BOUND_RADIUS);
-        clamped.setZ(center.getZ() + dz / dist * PLAYER_BOUND_RADIUS);
-        return clamped;
+        return PickArenaLayout.clampLocation(center, location, confineRadius);
     }
 
     private void confinePlayer(Player player) {
@@ -440,7 +428,10 @@ public final class ShulkerPickPhase implements PhaseRunner {
             pod.label.text(messageService.component(
                     player.getUniqueId(),
                     "shulker-pick-won",
-                    messageService.placeholder("reward", pod.reward.displayName())
+                    Placeholder.component(
+                            "reward",
+                            RewardDisplayService.displayName(messageService, player.getUniqueId(), crateDefinition.id(), pod.reward)
+                    )
             ));
         }
         World world = center.getWorld();
@@ -456,7 +447,10 @@ public final class ShulkerPickPhase implements PhaseRunner {
         messageService.send(
                 player.getUniqueId(),
                 "shulker-pick-win-chat",
-                messageService.placeholder("reward", rolledReward.displayName()),
+                Placeholder.component(
+                        "reward",
+                        RewardDisplayService.displayName(messageService, player.getUniqueId(), crateDefinition.id(), rolledReward)
+                ),
                 messageService.placeholder("crate", crateDefinition.displayName())
         );
     }
@@ -470,7 +464,10 @@ public final class ShulkerPickPhase implements PhaseRunner {
             pod.label.text(messageService.component(
                     player.getUniqueId(),
                     "shulker-pick-lost",
-                    messageService.placeholder("reward", pod.reward.displayName())
+                    Placeholder.component(
+                            "reward",
+                            RewardDisplayService.displayName(messageService, player.getUniqueId(), crateDefinition.id(), pod.reward)
+                    )
             ));
         }
         World world = center.getWorld();
@@ -661,31 +658,7 @@ public final class ShulkerPickPhase implements PhaseRunner {
     }
 
     private Location podLocation(int index, int count) {
-        double angle = (Math.PI * 2.0 * index / count) - (Math.PI / 2.0);
-        double x = Math.cos(angle) * RADIUS;
-        double z = Math.sin(angle) * RADIUS;
-        return center.clone().add(x, 0.0, z);
-    }
-
-    private Location resolveGroundCenter(Player player, CrateOpeningSession session) {
-        Location anchor = session.context().crateLocation();
-        if (anchor != null && anchor.getWorld() != null) {
-            Block ground = anchor.getBlock();
-            if (ground.isPassable()) {
-                ground = ground.getRelative(0, -1, 0);
-            }
-            return ground.getLocation().add(0.5, 1.02, 0.5);
-        }
-        Location feet = player.getLocation();
-        World world = feet.getWorld();
-        if (world == null) {
-            return feet.clone();
-        }
-        Block ground = feet.getBlock();
-        if (ground.isPassable()) {
-            ground = ground.getRelative(0, -1, 0);
-        }
-        return ground.getLocation().add(0.5, 1.02, 0.5);
+        return PickArenaLayout.podLocation(center, index, count);
     }
 
     private BlockData rewardBlock(RewardDefinition reward) {

@@ -11,6 +11,7 @@ import bm.b0b0b0.soulCrates.service.winner.LastWinnerService;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.entity.Player;
 
 public final class RewardSettlementService {
@@ -113,7 +114,10 @@ public final class RewardSettlementService {
         messageService.send(
                 player.getUniqueId(),
                 "open-finished",
-                messageService.placeholder("reward", roll.reward().displayName()),
+                Placeholder.component(
+                        "reward",
+                        RewardDisplayService.displayName(messageService, player.getUniqueId(), crateId, roll.reward())
+                ),
                 messageService.placeholder("crate", crate.displayName())
         );
         if (roll.pityTriggered()) {

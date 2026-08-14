@@ -9,25 +9,10 @@ import net.elytrium.serializer.language.object.YamlSerializable;
 public final class CrateShopSettings extends YamlSerializable {
 
     @Comment({
-            @CommentValue("Virtual key shop entries."),
+            @CommentValue("Optional in-game virtual key shop (/sc shop). Off by default — most networks sell keys on a website."),
+            @CommentValue("Requires Vault only when vault-price > 0. Crate must have virtual-keys enabled."),
     })
-    public boolean enabled = true;
+    public boolean enabled = false;
 
-    public List<ShopEntrySettings> entries = defaultEntries();
-
-    private static List<ShopEntrySettings> defaultEntries() {
-        List<ShopEntrySettings> entries = new ArrayList<>();
-        ShopEntrySettings single = new ShopEntrySettings();
-        single.crateId = "default";
-        single.keyAmount = 1;
-        single.vaultPrice = 500.0;
-        ShopEntrySettings bundle = new ShopEntrySettings();
-        bundle.crateId = "default";
-        bundle.keyAmount = 5;
-        bundle.vaultPrice = 2000.0;
-        bundle.displayMaterial = "TRIPWIRE_HOOK";
-        entries.add(single);
-        entries.add(bundle);
-        return entries;
-    }
+    public List<ShopEntrySettings> entries = new ArrayList<>();
 }

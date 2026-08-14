@@ -1,6 +1,7 @@
 package bm.b0b0b0.soulCrates.service.open;
 
 import bm.b0b0b0.soulCrates.config.settings.ClaimSettings;
+import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.model.RewardRollResult;
@@ -11,6 +12,7 @@ import bm.b0b0b0.soulCrates.service.reward.BroadcastService;
 import bm.b0b0b0.soulCrates.service.reward.DeliveryResult;
 import bm.b0b0b0.soulCrates.service.reward.PityService;
 import bm.b0b0b0.soulCrates.service.reward.RewardDeliveryService;
+import bm.b0b0b0.soulCrates.service.reward.RewardDisplayService;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
 import bm.b0b0b0.soulCrates.service.winner.LastWinnerService;
 import java.util.ArrayList;
@@ -101,7 +103,12 @@ public final class BulkOpenService {
         });
     }
 
-    public String formatSummary(Map<String, Integer> summary) {
+    public String formatSummary(MessageService messageService, Player player, String crateId, List<RewardRollResult> rolls) {
+        Map<String, Integer> summary = new LinkedHashMap<>();
+        for (RewardRollResult roll : rolls) {
+            String label = RewardDisplayService.plainText(messageService, player.getUniqueId(), crateId, roll.reward());
+            summary.merge(label, 1, Integer::sum);
+        }
         StringBuilder builder = new StringBuilder();
         boolean first = true;
         for (Map.Entry<String, Integer> entry : summary.entrySet()) {
@@ -120,7 +127,7 @@ public final class BulkOpenService {
     public Map<String, Integer> summarize(List<RewardRollResult> rolls) {
         Map<String, Integer> summary = new LinkedHashMap<>();
         for (RewardRollResult roll : rolls) {
-            summary.merge(roll.reward().displayName(), 1, Integer::sum);
+            summary.merge(roll.reward().id(), 1, Integer::sum);
         }
         return summary;
     }

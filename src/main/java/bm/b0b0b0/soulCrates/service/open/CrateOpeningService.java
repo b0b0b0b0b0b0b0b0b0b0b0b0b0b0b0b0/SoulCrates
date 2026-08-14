@@ -33,6 +33,7 @@ import bm.b0b0b0.soulCrates.service.physical.PhysicalCrateService;
 import bm.b0b0b0.soulCrates.service.menu.CrateMenuService;
 import bm.b0b0b0.soulCrates.service.reward.DeliveryResult;
 import bm.b0b0b0.soulCrates.service.reward.PityService;
+import bm.b0b0b0.soulCrates.service.reward.RewardDisplayService;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
 import bm.b0b0b0.soulCrates.service.reward.RewardSettlementService;
 import bm.b0b0b0.soulCrates.service.reward.WinLimitService;
@@ -41,6 +42,7 @@ import bm.b0b0b0.soulCrates.session.CrateOpeningSession;
 import bm.b0b0b0.soulCrates.session.SessionRegistry;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import java.util.List;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import java.util.Optional;
 import java.util.UUID;
 import org.bukkit.Bukkit;
@@ -151,21 +153,17 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         CrateDefinition crate = crateOptional.get();
         if (!crate.opening().permission.isBlank() && !player.hasPermission(crate.opening().permission)) {
             messageService.send(player.getUniqueId(), "no-permission");
-            restorePhysicalCrateAfterOpenFailed(player, crate, instance, normalizePhysicalBlockLocation(location));
             return;
         }
         if (!physicalCrateService.canOpen(player, instance)) {
             messageService.send(player.getUniqueId(), "physical-crate-open-denied");
-            restorePhysicalCrateAfterOpenFailed(player, crate, instance, normalizePhysicalBlockLocation(location));
             return;
         }
         if (sessionRegistry.isBusy(player.getUniqueId())) {
             messageService.send(player.getUniqueId(), "open-already");
-            restorePhysicalCrateAfterOpenFailed(player, crate, instance, normalizePhysicalBlockLocation(location));
             return;
         }
         if (!cooldownTracker.check(player, crate)) {
-            restorePhysicalCrateAfterOpenFailed(player, crate, instance, normalizePhysicalBlockLocation(location));
             return;
         }
         Location openLocation = normalizePhysicalBlockLocation(location);
@@ -173,7 +171,6 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                 PluginSchedulers.run(plugin, player, () -> {
                     if (!success) {
                         messageService.send(player.getUniqueId(), "physical-crate-open-denied");
-                        restorePhysicalCrateAfterOpenFailed(player, crate, instance, openLocation);
                         return;
                     }
                     if (isSelectMode(crate)) {
@@ -196,7 +193,10 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             CrateInstance instance,
             Location location
     ) {
-        if (physicalCrateService == null || location == null) {
+        if (physicalCrateService == null || location == null || player == null || crate == null || instance == null) {
+            return;
+        }
+        if (!player.getUniqueId().equals(instance.ownerId())) {
             return;
         }
         physicalCrateService.returnPlacedCrate(player, crate, instance, location.getBlock().getLocation());
@@ -522,7 +522,7 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                     "multi-open-finished",
                     messageService.placeholder("amount", Integer.toString(amount)),
                     messageService.placeholder("crate", crate.displayName()),
-                    messageService.placeholder("summary", bulkOpenService.formatSummary(bulkOpenService.summarize(rolls)))
+                    messageService.placeholder("summary", bulkOpenService.formatSummary(messageService, player, crate.id(), rolls))
             );
         }));
     }
@@ -766,7 +766,15 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         messageService.send(
                 player.getUniqueId(),
                 "reroll-success",
-                messageService.placeholder("reward", newRoll.reward().displayName())
+                Placeholder.component(
+                        "reward",
+                        RewardDisplayService.displayName(
+                                messageService,
+                                player.getUniqueId(),
+                                session.crateDefinition().id(),
+                                newRoll.reward()
+                        )
+                )
         );
         restartAnimation(player, session, newRoll);
     }

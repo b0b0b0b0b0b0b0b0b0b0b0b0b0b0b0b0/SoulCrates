@@ -67,6 +67,10 @@ public final class CrateInteractListener implements Listener {
             Optional<CrateInstance> instance = physicalCrateService.findAt(blockLocation);
             if (instance.isPresent()) {
                 cancelInteract(event);
+                if (event.getPlayer().isSneaking()) {
+                    crateService.pickupPlacedCrate(event.getPlayer(), instance.get(), blockLocation);
+                    return;
+                }
                 crateService.openPlacedCrate(event.getPlayer(), instance.get(), blockLocation);
                 return;
             }

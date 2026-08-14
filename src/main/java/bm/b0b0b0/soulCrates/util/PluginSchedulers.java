@@ -26,6 +26,10 @@ public final class PluginSchedulers {
         );
     }
 
+    public static ScheduledTask runGlobalRepeating(Plugin plugin, long initialDelayTicks, long periodTicks, Runnable runnable) {
+        return runGlobalTimerReturning(plugin, initialDelayTicks, periodTicks, runnable);
+    }
+
     public static void runGlobalTimer(Plugin plugin, long initialDelayTicks, long periodTicks, Runnable runnable) {
         long initial = Math.max(1L, initialDelayTicks);
         long period = Math.max(1L, periodTicks);

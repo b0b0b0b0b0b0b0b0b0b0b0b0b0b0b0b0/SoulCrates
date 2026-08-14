@@ -8,9 +8,6 @@ import net.elytrium.serializer.language.object.YamlSerializable;
 
 public final class RewardEntrySettings extends YamlSerializable {
 
-    @Comment({
-            @CommentValue("Unique reward id inside this crate."),
-    })
     public String id = "common";
 
     @Comment({
@@ -24,9 +21,10 @@ public final class RewardEntrySettings extends YamlSerializable {
     public double weight = 10.0;
 
     @Comment({
-            @CommentValue("Display name in preview/spinner GUI."),
+            @CommentValue("Optional label. Leave empty for item rewards — name and amount come from grants (client locale)."),
+            @CommentValue("Required for command-only rewards (VIP, ranks). Or use lang reward-name.<crate>.<id>."),
     })
-    public String displayName = "Common Reward";
+    public String displayName = "";
 
     @Comment({
             @CommentValue("Preview icon material."),
@@ -36,12 +34,17 @@ public final class RewardEntrySettings extends YamlSerializable {
     public int customModelData = -1;
 
     @Comment({
-            @CommentValue("Items given: MATERIAL:amount or vault:100"),
+            @CommentValue("Physical items only: MATERIAL:amount"),
+            @CommentValue("Examples: DIAMOND:5, DIAMOND_SWORD:1, ENCHANTED_GOLDEN_APPLE:2"),
+            @CommentValue("Money, ranks, points, kits — use commands below (eco, lp, cmi, etc.), not grants."),
     })
     public List<String> grants = new ArrayList<>(List.of("DIAMOND:1"));
 
     @Comment({
-            @CommentValue("Console commands. Placeholders: {player}, {crate}, {reward}"),
+            @CommentValue("Console commands after win. Optional. Empty = omit this field."),
+            @CommentValue("Format: commands: then - \"your command {player} ...\" (quotes required)."),
+            @CommentValue("Examples: eco give {player} 1000 | lp user {player} parent addtemp vip 30d"),
+            @CommentValue("Placeholders: {player} {uuid} {crate} {reward}"),
     })
     public List<String> commands = new ArrayList<>();
 

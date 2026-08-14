@@ -33,15 +33,21 @@ public final class CrateDefinitionLoader {
         }
         Path defaultFile = cratesDirectory.resolve("default.yml");
         if (!Files.exists(defaultFile)) {
-            SerializedConfigReloader.reload(new CrateDefinitionSettings(), defaultFile);
+            CrateDefinitionSettings defaults = new CrateDefinitionSettings();
+            defaults.save(defaultFile);
+            CrateYamlPresenter.polish(defaultFile);
         }
         ensureExampleCrates(cratesDirectory);
         List<CrateDefinition> crates = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(cratesDirectory, "*.yml")) {
             for (Path file : stream) {
-                CrateDefinitionSettings settings = SerializedConfigReloader.reload(new CrateDefinitionSettings(), file);
+                String fileName = file.getFileName().toString();
+                if (fileName.startsWith("_")) {
+                    continue;
+                }
+                CrateYamlPresenter.polish(file);
+                CrateDefinitionSettings settings = CrateYamlLoadGuard.reloadCrateSettings(new CrateDefinitionSettings(), file);
                 if (settings.id == null || settings.id.isBlank()) {
-                    String fileName = file.getFileName().toString();
                     settings.id = fileName.substring(0, fileName.length() - 4).toLowerCase(Locale.ROOT);
                 }
                 crates.add(toDefinition(settings));
@@ -78,6 +84,7 @@ public final class CrateDefinitionLoader {
             settings.idleEffects.get(0).color = idleColor;
         }
         settings.save(file);
+        CrateYamlPresenter.polish(file);
     }
 
     public static CrateDefinition toDefinition(CrateDefinitionSettings settings) {

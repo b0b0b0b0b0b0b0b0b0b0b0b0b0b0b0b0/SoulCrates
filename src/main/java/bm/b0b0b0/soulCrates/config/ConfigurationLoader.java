@@ -103,11 +103,13 @@ public final class ConfigurationLoader {
     }
 
     public CrateDefinitionSettings loadCrateSettings(String crateId) {
-        return SerializedConfigReloader.reload(new CrateDefinitionSettings(), crateFilePath(crateId));
+        return CrateYamlLoadGuard.reloadCrateSettings(new CrateDefinitionSettings(), crateFilePath(crateId));
     }
 
     public void saveCrateSettings(CrateDefinitionSettings settings) {
-        settings.save(crateFilePath(settings.id));
+        Path path = crateFilePath(settings.id);
+        settings.save(path);
+        CrateYamlPresenter.polish(path);
     }
 
     private void ensureDirectories() {

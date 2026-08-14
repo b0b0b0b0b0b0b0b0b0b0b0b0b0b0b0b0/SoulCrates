@@ -35,4 +35,14 @@ public final class PhysicalCrateSettings extends YamlSerializable {
             @CommentValue("Return the physical crate item when owner breaks the block."),
     })
     public boolean returnItemOnBreak = true;
+
+    @Comment({
+            @CommentValue("Remove placed crate and return item if owner did not start opening in time."),
+    })
+    public boolean openTimeoutEnabled = true;
+
+    @Comment({
+            @CommentValue("Seconds after placement to open the crate before it is auto-returned. 0 = disabled."),
+    })
+    public int openTimeoutSeconds = 50;
 }

@@ -12,7 +12,8 @@ public record CrateInstance(
         int x,
         int y,
         int z,
-        long createdAt
+        long createdAt,
+        long placedAt
 ) {
 
     public Location location(org.bukkit.World worldRef) {

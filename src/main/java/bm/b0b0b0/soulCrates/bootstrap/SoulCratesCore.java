@@ -157,6 +157,7 @@ public final class SoulCratesCore {
         lastWinnerService = new LastWinnerService(repository, pluginConfig.cratesSettings().lastWinner);
         lootBoxService = new LootBoxService(plugin, messageService);
         physicalCrateService = new PhysicalCrateService(plugin, messageService, repository);
+        physicalCrateService.attachCrateRegistry(crateRegistry);
         physicalCrateService.applySettings(pluginConfig.cratesSettings().physicalCrates);
         physicalCrateService.loadCache();
         bulkOpenService = new BulkOpenService(
@@ -169,7 +170,7 @@ public final class SoulCratesCore {
         );
         bulkOpenService.attachClaim(claimService, lastWinnerService, pluginConfig.cratesSettings().claim);
         keyShopService = new KeyShopService(
-                pluginConfig.cratesSettings().shop,
+                pluginConfig.crateShopSettings(),
                 hookRegistry,
                 keyService,
                 crateRegistry,
@@ -179,7 +180,8 @@ public final class SoulCratesCore {
                 plugin,
                 messageService,
                 crateRegistry,
-                pluginConfig.cratesSettings().idleDisplay.hologram
+                pluginConfig.cratesSettings().idleDisplay.hologram,
+                lastWinnerService
         );
         IdleParticleService idleParticleService = new IdleParticleService(plugin, pluginConfig.cratesSettings().idleDisplay);
         idleCrateDisplayService = new IdleCrateDisplayService(
@@ -288,7 +290,7 @@ public final class SoulCratesCore {
             lastWinnerService.applySettings(pluginConfig.cratesSettings().lastWinner);
         }
         if (keyShopService != null) {
-            keyShopService.applySettings(pluginConfig.cratesSettings().shop);
+            keyShopService.applySettings(pluginConfig.crateShopSettings());
         }
         if (physicalCrateService != null) {
             physicalCrateService.applySettings(pluginConfig.cratesSettings().physicalCrates);

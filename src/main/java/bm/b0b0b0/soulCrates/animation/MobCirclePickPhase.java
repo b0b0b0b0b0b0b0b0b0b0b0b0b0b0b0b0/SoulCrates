@@ -1,5 +1,6 @@
 package bm.b0b0b0.soulCrates.animation;
 
+import bm.b0b0b0.soulCrates.gui.GuiItemFactory;
 import bm.b0b0b0.soulCrates.config.settings.AnimationPhaseProperties;
 import bm.b0b0b0.soulCrates.config.settings.AnimationPhaseSettings;
 import bm.b0b0b0.soulCrates.config.settings.RarityTierSettings;
@@ -37,7 +38,6 @@ import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.RayTraceResult;
@@ -48,9 +48,8 @@ import org.joml.Vector3f;
 
 public final class MobCirclePickPhase implements PhaseRunner {
 
-    private static final double RADIUS = 3.0;
-    private static final double PLAYER_BOUND_RADIUS = 2.45;
-    private static final double PLAYER_BOUND_RADIUS_SQ = PLAYER_BOUND_RADIUS * PLAYER_BOUND_RADIUS;
+    private static final Map<UUID, MobCirclePickPhase> ACTIVE = new ConcurrentHashMap<>();
+
     private static final float LABEL_GAP = 0.55f;
     private static final float HITBOX_WIDTH = 1.15f;
     private static final float HITBOX_HEIGHT = 1.85f;
@@ -71,8 +70,7 @@ public final class MobCirclePickPhase implements PhaseRunner {
     private static final int FINISH_HOLD_TICKS = 18;
 
     private static final double FLOAT_BASE = 0.08;
-
-    private static final Map<UUID, MobCirclePickPhase> ACTIVE = new ConcurrentHashMap<>();
+    private static final double MOB_HOVER_OFFSET = 0.9;
 
     private record FallingByte(ItemDisplay display, double velocityY, int spinTicks) {
     }
@@ -109,6 +107,8 @@ public final class MobCirclePickPhase implements PhaseRunner {
     private final RewardDefinition rolledReward;
     private final EntityType entityType;
     private final int podCount;
+    private final boolean confinePlayer;
+    private final double confineRadius;
 
     private Stage stage = Stage.PICKING;
     private int stageTicks;
@@ -147,6 +147,8 @@ public final class MobCirclePickPhase implements PhaseRunner {
         AnimationPhaseProperties properties = settings.properties == null ? new AnimationPhaseProperties() : settings.properties;
         this.entityType = resolveEntityType(properties.mobEntity);
         this.podCount = Math.max(3, Math.min(12, properties.mobCount <= 0 ? 7 : properties.mobCount));
+        this.confinePlayer = properties.confinePlayer;
+        this.confineRadius = Math.max(0.5, properties.confineRadius);
     }
 
     public static Optional<MobCirclePickPhase> activePhase(UUID playerId) {
@@ -188,17 +190,19 @@ public final class MobCirclePickPhase implements PhaseRunner {
         picked = false;
         winnerIndex = -1;
         prizeAnchor = null;
-        center = resolveGroundCenter(player, session);
+        center = PickArenaLayout.resolveArenaCenter(session.context().crateLocation(), player);
         hidePhysicalCrateBlock(session);
         List<RewardDefinition> enabled = crateDefinition.rewards().stream().filter(RewardDefinition::enabled).toList();
         if (enabled.isEmpty()) {
             enabled = List.of(rolledReward);
         }
         buildPods(player, enabled, session);
-        buildBytePool(enabled);
+        buildBytePool(player, enabled);
         startBossBar(player);
         restoreCollidable = player.isCollidable();
-        player.setCollidable(false);
+        if (confinePlayer) {
+            player.setCollidable(false);
+        }
         ACTIVE.put(player.getUniqueId(), this);
         World world = center.getWorld();
         if (world != null) {
@@ -215,7 +219,9 @@ public final class MobCirclePickPhase implements PhaseRunner {
             return;
         }
         stageTicks++;
-        confinePlayer(player);
+        if (confinePlayer) {
+            confinePlayer(player);
+        }
         updatePodMotion(player);
         switch (stage) {
             case PICKING -> tickPicking(player);
@@ -249,36 +255,15 @@ public final class MobCirclePickPhase implements PhaseRunner {
     }
 
     public boolean shouldConfinePlayer() {
-        return stage == Stage.PICKING || stage == Stage.PRIZE_DROP;
+        return confinePlayer && (stage == Stage.PICKING || stage == Stage.PRIZE_DROP);
     }
 
     public boolean isOutsideBoundary(Location location) {
-        if (center == null || location == null || location.getWorld() == null) {
-            return false;
-        }
-        if (center.getWorld() != location.getWorld()) {
-            return true;
-        }
-        double dx = location.getX() - center.getX();
-        double dz = location.getZ() - center.getZ();
-        return dx * dx + dz * dz > PLAYER_BOUND_RADIUS_SQ;
+        return PickArenaLayout.isOutsideBoundary(center, location, confineRadius);
     }
 
     public Location clampLocation(Location location) {
-        if (center == null || location == null) {
-            return location;
-        }
-        double dx = location.getX() - center.getX();
-        double dz = location.getZ() - center.getZ();
-        double distSq = dx * dx + dz * dz;
-        if (distSq <= PLAYER_BOUND_RADIUS_SQ) {
-            return location;
-        }
-        double dist = Math.sqrt(distSq);
-        Location clamped = location.clone();
-        clamped.setX(center.getX() + dx / dist * PLAYER_BOUND_RADIUS);
-        clamped.setZ(center.getZ() + dz / dist * PLAYER_BOUND_RADIUS);
-        return clamped;
+        return PickArenaLayout.clampLocation(center, location, confineRadius);
     }
 
     public boolean tryPick(Player player, Entity entity) {
@@ -418,7 +403,7 @@ public final class MobCirclePickPhase implements PhaseRunner {
         messageService.send(
                 player.getUniqueId(),
                 "mob-pick-win-chat",
-                messageService.placeholder("reward", rolledReward.displayName()),
+                Placeholder.component("reward", GuiItemFactory.rewardDisplayName(messageService, player, crateDefinition.id(), rolledReward)),
                 messageService.placeholder("crate", crateDefinition.displayName())
         );
     }
@@ -477,7 +462,7 @@ public final class MobCirclePickPhase implements PhaseRunner {
         pod.base = anchor.clone();
         if (world != null) {
             pod.rewardItem = world.spawn(anchor.clone().add(0.0, 0.12, 0.0), ItemDisplay.class, entity -> {
-                entity.setItemStack(rewardItemStack(pod.reward));
+                entity.setItemStack(GuiItemFactory.rewardDisplayItem(messageService, player, crateDefinition.id(), pod.reward));
                 entity.setBillboard(Display.Billboard.CENTER);
                 entity.setPersistent(false);
                 entity.setViewRange(64.0f);
@@ -492,7 +477,7 @@ public final class MobCirclePickPhase implements PhaseRunner {
             pod.label.text(messageService.component(
                     player.getUniqueId(),
                     "mob-pick-lost",
-                    messageService.placeholder("reward", pod.reward.displayName())
+                    Placeholder.component("reward", GuiItemFactory.rewardDisplayName(messageService, player, crateDefinition.id(), pod.reward))
             ));
             pod.label.teleport(labelLocation(anchor));
         }
@@ -568,7 +553,7 @@ public final class MobCirclePickPhase implements PhaseRunner {
             return;
         }
         removePrizeDisplay();
-        ItemStack stack = rewardItemStack(rolledReward);
+        ItemStack stack = GuiItemFactory.rewardDisplayItem(messageService, player, crateDefinition.id(), rolledReward);
         prizeItem = world.spawn(origin.clone().add(0.0, PRIZE_FALL_HEIGHT, 0.0), ItemDisplay.class, entity -> {
             entity.setItemStack(stack);
             entity.setBillboard(Display.Billboard.CENTER);
@@ -582,7 +567,7 @@ public final class MobCirclePickPhase implements PhaseRunner {
             entity.text(messageService.component(
                     player.getUniqueId(),
                     "mob-pick-won",
-                    messageService.placeholder("reward", rolledReward.displayName())
+                    Placeholder.component("reward", GuiItemFactory.rewardDisplayName(messageService, player, crateDefinition.id(), rolledReward))
             ));
             entity.setBillboard(Display.Billboard.CENTER);
             entity.setSeeThrough(false);
@@ -695,11 +680,11 @@ public final class MobCirclePickPhase implements PhaseRunner {
         });
     }
 
-    private void buildBytePool(List<RewardDefinition> enabled) {
+    private void buildBytePool(Player player, List<RewardDefinition> enabled) {
         bytePool.clear();
-        bytePool.add(rewardItemStack(rolledReward));
+        bytePool.add(GuiItemFactory.rewardDisplayItem(messageService, player, crateDefinition.id(), rolledReward));
         for (RewardDefinition reward : enabled) {
-            bytePool.add(rewardItemStack(reward));
+            bytePool.add(GuiItemFactory.rewardDisplayItem(messageService, player, crateDefinition.id(), reward));
         }
         bytePool.add(new ItemStack(Material.PAPER));
         bytePool.add(new ItemStack(Material.BOOK));
@@ -918,6 +903,12 @@ public final class MobCirclePickPhase implements PhaseRunner {
         player.teleport(clamped);
     }
 
+    private Location podLocation(int index, int count) {
+        Location location = PickArenaLayout.podLocation(center, index, count);
+        location.add(0.0, MOB_HOVER_OFFSET, 0.0);
+        return location;
+    }
+
     private static Location hitboxCenter(Location anchor) {
         return anchor.clone().add(0.0, HITBOX_HEIGHT * 0.45, 0.0);
     }
@@ -954,50 +945,6 @@ public final class MobCirclePickPhase implements PhaseRunner {
             return pod.rewardItem.getLocation();
         }
         return pod.base;
-    }
-
-    private Location podLocation(int index, int count) {
-        double angle = (Math.PI * 2.0 * index / count) - (Math.PI / 2.0);
-        double x = Math.cos(angle) * RADIUS;
-        double z = Math.sin(angle) * RADIUS;
-        return center.clone().add(x, 0.0, z);
-    }
-
-    private Location resolveGroundCenter(Player player, CrateOpeningSession session) {
-        Location anchor = session.context().crateLocation();
-        if (anchor != null && anchor.getWorld() != null) {
-            Block ground = anchor.getBlock();
-            if (ground.isPassable()) {
-                ground = ground.getRelative(0, -1, 0);
-            }
-            return ground.getLocation().add(0.5, 1.0, 0.5);
-        }
-        Location feet = player.getLocation();
-        World world = feet.getWorld();
-        if (world == null) {
-            return feet.clone();
-        }
-        Block ground = feet.getBlock();
-        if (ground.isPassable()) {
-            ground = ground.getRelative(0, -1, 0);
-        }
-        return ground.getLocation().add(0.5, 1.0, 0.5);
-    }
-
-    private ItemStack rewardItemStack(RewardDefinition reward) {
-        Material material = Material.matchMaterial(reward.material());
-        if (material == null || material.isAir()) {
-            material = Material.CHEST;
-        }
-        ItemStack stack = new ItemStack(material);
-        if (reward.customModelData() > 0) {
-            ItemMeta meta = stack.getItemMeta();
-            if (meta != null) {
-                meta.setCustomModelData(reward.customModelData());
-                stack.setItemMeta(meta);
-            }
-        }
-        return stack;
     }
 
     private org.bukkit.Color rewardGlow(RewardDefinition reward) {

@@ -116,11 +116,6 @@ public final class CrateMenuService {
                 resolved,
                 rewardRollService,
                 (target, instanceId) -> openCallbacks.beginPhysicalCrateOpen(target, instanceId, resolved),
-                () -> {
-                    if (physicalCrateService != null) {
-                        physicalCrateService.returnPlacedCrate(player, crate, instance, resolved);
-                    }
-                },
                 null
         );
         PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));
@@ -170,7 +165,7 @@ public final class CrateMenuService {
     }
 
     public void openShop(Player player) {
-        if (keyShopService == null || !pluginConfig.cratesSettings().shop.enabled) {
+        if (keyShopService == null || !pluginConfig.crateShopSettings().enabled) {
             messageService.send(player.getUniqueId(), "shop-disabled");
             return;
         }
@@ -178,7 +173,7 @@ public final class CrateMenuService {
                 player.getUniqueId(),
                 messageService,
                 pluginConfig.guiShopSettings(),
-                pluginConfig.cratesSettings().shop,
+                pluginConfig.crateShopSettings(),
                 crateRegistry,
                 (target, entry) -> keyShopService.purchase(target, entry)
         );

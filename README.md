@@ -41,8 +41,8 @@
 |------|--------|
 | `config.yml` | БД, Redis, голограммы, premium-права |
 | `crates/<id>.yml` | Кейс: награды, ключи, анимация, opening |
-| `shop.yml` + `gui/shop.yml` | Магазин ключей (`/sc shop`) |
-| `gui/*.yml` | Слоты меню (preview, select, reroll…) |
+| `shop.yml` | Опциональный in-game магазин ключей (`/sc shop`), **выключен по умолчанию** |
+| `gui/shop.yml` | Слоты GUI магазина (не цены) |
 | `lang/messages_*.yml` | Тексты игрокам (MiniMessage) |
 
 После правки YAML: **`/sc reload`**.
@@ -109,20 +109,56 @@ idleEffects:
 
 rewards:
   - id: common
-    weight: 80
-    displayName: "1000$"
-    material: GOLD_INGOT
-    grants: ["vault:1000"]
+    weight: 70
+    displayName: "Diamond Stack"
+    material: DIAMOND
+    grants:
+      - "DIAMOND:3"
   - id: rare
+    weight: 25
+    displayName: "Emerald Stack"
+    material: EMERALD
+    grants:
+      - "EMERALD:5"
+  - id: legendary
     weight: 20
-    displayName: "Меч"
-    material: DIAMOND_SWORD
-    grants: ["DIAMOND_SWORD:1"]
+    displayName: "Netherite Ingot"
+    material: NETHERITE_INGOT
+    grants:
+      - "NETHERITE_INGOT:1"
     broadcast: true
 ```
 
-**grants:** `MATERIAL:кол-во`, `vault:сумма`.  
-**commands** на награде: `{player}`, `{crate}`, `{reward}`.
+**grants** — предметы: `MATERIAL:amount`.  
+**commands** — опционально, для рангов/денег/китов (если нужно). Плейсхолдеры: `{player}`, `{uuid}`, `{crate}`, `{reward}`.
+
+Дефолтный кейс выдаёт **только предметы**, без economy-команд.
+
+---
+
+## `shop.yml` (опционально)
+
+По умолчанию `enabled: false`. Включай только если нужен in-game магазин за Vault; ключи с доната обычно продают на сайте.
+
+```yaml
+enabled: false
+entries: []
+```
+
+Пример записи (EssentialsX + Vault):
+
+```yaml
+enabled: true
+entries:
+  - enabled: true
+    crate-id: "donate"
+    key-amount: 1
+    vault-price: 500.0
+    item-cost: ""
+    display-material: "TRIPWIRE_HOOK"
+```
+
+Старый `vault:1000` в grants наград **не работает** — только через `commands` при необходимости.
 
 ---
 

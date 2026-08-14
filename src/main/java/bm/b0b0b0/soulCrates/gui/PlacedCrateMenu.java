@@ -26,7 +26,6 @@ public final class PlacedCrateMenu extends SoulMenu {
     private final Location blockLocation;
     private final RewardRollService rewardRollService;
     private final BiConsumer<Player, UUID> openAction;
-    private final Runnable abandonAction;
     private final Runnable openCloseAction;
     private int page;
     private boolean openRequested;
@@ -41,7 +40,6 @@ public final class PlacedCrateMenu extends SoulMenu {
             Location blockLocation,
             RewardRollService rewardRollService,
             BiConsumer<Player, UUID> openAction,
-            Runnable abandonAction,
             Runnable openCloseAction
     ) {
         super(
@@ -60,7 +58,6 @@ public final class PlacedCrateMenu extends SoulMenu {
         this.blockLocation = blockLocation.clone();
         this.rewardRollService = rewardRollService;
         this.openAction = openAction;
-        this.abandonAction = abandonAction;
         this.openCloseAction = openCloseAction;
         refresh();
     }
@@ -108,6 +105,11 @@ public final class PlacedCrateMenu extends SoulMenu {
                         "placed-crate-open-lore"
                 )
         );
+        GuiItemFactory.fillPreviewActionSlots(
+                getInventory(),
+                previewSettings.multiOpenSlots,
+                previewSettings.grid.borderFillerMaterial
+        );
         int infoSlot = previewSettings.backSlot >= 0 ? previewSettings.backSlot : 4;
         getInventory().setItem(infoSlot, infoItem(player));
     }
@@ -147,9 +149,6 @@ public final class PlacedCrateMenu extends SoulMenu {
             }
             return;
         }
-        if (abandonAction != null) {
-            abandonAction.run();
-        }
     }
 
     private ItemStack infoItem(Player player) {
@@ -169,14 +168,20 @@ public final class PlacedCrateMenu extends SoulMenu {
                     messageService.component(
                             player.getUniqueId(),
                             "placed-crate-info-lore1",
-                            messageService.placeholder("serial", crateInstance.serial())
+                            messageService.placeholder("preset", presetLabel())
                     ),
                     messageService.component(player.getUniqueId(), "placed-crate-info-lore2"),
-                    messageService.component(player.getUniqueId(), "placed-crate-info-lore3")
+                    messageService.component(player.getUniqueId(), "placed-crate-info-lore3"),
+                    messageService.component(player.getUniqueId(), "placed-crate-info-lore4")
             ));
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    private String presetLabel() {
+        String preset = crateDefinition.animations().preset;
+        return preset == null || preset.isBlank() ? "SHOWCASE" : preset;
     }
 
     private static int normalizeSize(int size) {

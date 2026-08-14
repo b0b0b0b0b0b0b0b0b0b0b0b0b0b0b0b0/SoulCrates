@@ -52,9 +52,6 @@ public final class CratesSettings extends YamlSerializable {
     public LastWinnerSettings lastWinner = new LastWinnerSettings();
 
     @NewLine
-    public CrateShopSettings shop = new CrateShopSettings();
-
-    @NewLine
     @Comment({
             @CommentValue("Redis pub/sub mirror for virtual keys and pity (MYSQL networks)."),
     })

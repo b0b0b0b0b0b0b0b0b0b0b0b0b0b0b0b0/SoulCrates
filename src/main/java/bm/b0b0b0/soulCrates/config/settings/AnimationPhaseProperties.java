@@ -37,4 +37,14 @@ public final class AnimationPhaseProperties extends YamlSerializable {
             @CommentValue("Mob pick only: how many mobs spawn in the circle."),
     })
     public int mobCount = 7;
+
+    @Comment({
+            @CommentValue("Mob pick / shulker pick: restrict player movement to a small zone around spawn center."),
+    })
+    public boolean confinePlayer = false;
+
+    @Comment({
+            @CommentValue("Walk radius from spawn center when confinePlayer is true."),
+    })
+    public double confineRadius = 2.0;
 }

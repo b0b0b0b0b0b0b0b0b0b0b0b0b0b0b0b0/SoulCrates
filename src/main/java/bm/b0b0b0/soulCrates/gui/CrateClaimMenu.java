@@ -4,6 +4,7 @@ import bm.b0b0b0.soulCrates.config.settings.GuiClaimSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.PendingClaim;
 import bm.b0b0b0.soulCrates.service.claim.ClaimService;
+import bm.b0b0b0.soulCrates.service.reward.RewardDisplayService;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -110,7 +111,15 @@ public final class CrateClaimMenu extends SoulMenu {
                 messageService.send(
                         player.getUniqueId(),
                         "claim-success",
-                        messageService.placeholder("reward", claim.reward().displayName())
+                        Placeholder.component(
+                                "reward",
+                                RewardDisplayService.displayName(
+                                        messageService,
+                                        player.getUniqueId(),
+                                        claim.crateId(),
+                                        claim.reward()
+                                )
+                        )
                 );
             }
             claimService.loadPending(player.getUniqueId()).thenAccept(updated -> PluginSchedulers.run(plugin, player, () -> {
@@ -135,7 +144,15 @@ public final class CrateClaimMenu extends SoulMenu {
             meta.displayName(messageService.component(
                     player.getUniqueId(),
                     "claim-entry-name",
-                    Placeholder.parsed("reward", claim.reward().displayName())
+                    Placeholder.component(
+                            "reward",
+                            RewardDisplayService.displayName(
+                                    messageService,
+                                    player.getUniqueId(),
+                                    claim.crateId(),
+                                    claim.reward()
+                            )
+                    )
             ));
             meta.lore(List.of(messageService.component(
                     player.getUniqueId(),

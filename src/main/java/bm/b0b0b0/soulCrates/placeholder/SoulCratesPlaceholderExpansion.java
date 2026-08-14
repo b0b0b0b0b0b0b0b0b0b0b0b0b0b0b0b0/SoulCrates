@@ -1,7 +1,11 @@
 package bm.b0b0b0.soulCrates.placeholder;
 
+import bm.b0b0b0.soulCrates.model.CrateDefinition;
+import bm.b0b0b0.soulCrates.model.WinnerEntry;
 import bm.b0b0b0.soulCrates.service.CrateService;
+import bm.b0b0b0.soulCrates.service.reward.RewardDisplayService;
 import java.util.Locale;
+import java.util.UUID;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -41,8 +45,12 @@ public final class SoulCratesPlaceholderExpansion extends PlaceholderExpansion {
 
     @Override
     public @Nullable String onRequest(OfflinePlayer player, @NotNull String params) {
+        String rewardName = resolveRewardName(player, params);
+        if (rewardName != null) {
+            return rewardName;
+        }
         if (player == null) {
-            return resolveWinner(params);
+            return resolveWinner(null, params);
         }
         if ("active_session".equals(params)) {
             return crateService.hasActiveSession(player.getUniqueId()) ? "true" : "false";
@@ -98,13 +106,47 @@ public final class SoulCratesPlaceholderExpansion extends PlaceholderExpansion {
             if (crateService.playerDataService() == null) {
                 return "";
             }
-            return crateService.playerDataService().lastReward(player.getUniqueId(), crateId);
+            String rewardId = crateService.playerDataService().lastReward(player.getUniqueId(), crateId);
+            if (rewardId == null || rewardId.isBlank()) {
+                return "";
+            }
+            return RewardDisplayService.plainText(
+                    crateService.messageService(),
+                    viewerId(player),
+                    crateService.crateRegistry(),
+                    crateId,
+                    rewardId
+            );
         }
-        String winner = resolveWinner(params);
-        return winner == null ? null : winner;
+        return resolveWinner(player, params);
     }
 
-    private String resolveWinner(String params) {
+    private String resolveRewardName(OfflinePlayer player, String params) {
+        if (!params.startsWith("reward_")) {
+            return null;
+        }
+        for (CrateDefinition crate : crateService.crateRegistry().list()) {
+            String prefix = "reward_" + crate.id().toLowerCase(Locale.ROOT) + "_";
+            if (!params.toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                continue;
+            }
+            String rewardId = params.substring(prefix.length());
+            if (rewardId.isBlank()) {
+                return "";
+            }
+            return RewardDisplayService.findReward(crateService.crateRegistry(), crate.id(), rewardId)
+                    .map(reward -> RewardDisplayService.plainText(
+                            crateService.messageService(),
+                            viewerId(player),
+                            crate.id(),
+                            reward
+                    ))
+                    .orElse(rewardId);
+        }
+        return null;
+    }
+
+    private String resolveWinner(OfflinePlayer player, String params) {
         if (crateService.lastWinnerService() == null || !crateService.lastWinnerService().enabled()) {
             return null;
         }
@@ -119,7 +161,7 @@ public final class SoulCratesPlaceholderExpansion extends PlaceholderExpansion {
                 return crateService.lastWinnerService().winnerPlayer(crateId, 1);
             }
             if ("reward".equals(parts[1])) {
-                return crateService.lastWinnerService().winnerReward(crateId, 1);
+                return localizedWinnerReward(player, crateId, 1);
             }
             if ("reward_id".equals(parts[1])) {
                 return crateService.lastWinnerService().winnerRewardId(crateId, 1);
@@ -141,7 +183,7 @@ public final class SoulCratesPlaceholderExpansion extends PlaceholderExpansion {
                     return crateService.lastWinnerService().winnerPlayer(crateId, index);
                 }
                 if ("reward".equals(field)) {
-                    return crateService.lastWinnerService().winnerReward(crateId, index);
+                    return localizedWinnerReward(player, crateId, index);
                 }
                 if ("reward_id".equals(field) || "id".equals(field)) {
                     return crateService.lastWinnerService().winnerRewardId(crateId, index);
@@ -151,5 +193,23 @@ public final class SoulCratesPlaceholderExpansion extends PlaceholderExpansion {
             }
         }
         return null;
+    }
+
+    private String localizedWinnerReward(OfflinePlayer player, String crateId, int index) {
+        WinnerEntry entry = crateService.lastWinnerService().winner(crateId, index);
+        if (entry == null || entry.rewardId() == null || entry.rewardId().isBlank()) {
+            return entry == null || entry.rewardDisplay() == null ? "" : entry.rewardDisplay();
+        }
+        return RewardDisplayService.plainText(
+                crateService.messageService(),
+                viewerId(player),
+                crateService.crateRegistry(),
+                crateId,
+                entry.rewardId()
+        );
+    }
+
+    private static UUID viewerId(OfflinePlayer player) {
+        return player == null ? null : player.getUniqueId();
     }
 }

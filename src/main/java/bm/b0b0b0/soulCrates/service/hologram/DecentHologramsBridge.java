@@ -44,7 +44,7 @@ final class DecentHologramsBridge {
             Method setLineMethod = hologramClass.getMethod("setLine", int.class, String.class);
             List<String> lines = settings.lines == null ? List.of() : settings.lines;
             for (int index = 0; index < lines.size(); index++) {
-                String line = lines.get(index).replace("{crate}", crate.displayName()).replace("{crate_id}", crate.id());
+                String line = HologramLineFormatter.forExternalPlugin(lines.get(index), crate);
                 setLineMethod.invoke(hologram, index, line);
             }
             HOLOGRAMS.put(locationKey, hologram);

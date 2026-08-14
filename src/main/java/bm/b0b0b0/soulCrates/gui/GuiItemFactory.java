@@ -4,14 +4,15 @@ import bm.b0b0b0.soulCrates.config.settings.RarityTierSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
+import bm.b0b0b0.soulCrates.service.reward.RewardDisplayService;
 import bm.b0b0b0.soulCrates.util.ItemDisplayNames;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
+import java.util.UUID;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
@@ -43,93 +44,107 @@ public final class GuiItemFactory {
             RewardDefinition reward,
             double chancePercent
     ) {
-        Material material = Material.matchMaterial(reward.material());
-        if (material == null || material.isAir()) {
-            material = Material.PAPER;
-        }
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.displayName(rewardTitle(messages, player, reward, material));
-            List<Component> lore = new ArrayList<>();
-            if (hasCustomDisplayName(reward, material)) {
-                lore.add(ItemDisplayNames.materialName(item));
-            }
-            if (reward.rarityId() != null && !reward.rarityId().isBlank() && crate.rarities() != null) {
-                for (RarityTierSettings tier : crate.rarities()) {
-                    if (tier.id != null && tier.id.equalsIgnoreCase(reward.rarityId())) {
-                        lore.add(messages.parse(tier.color + tier.displayName));
-                        break;
-                    }
-                }
-            }
-            lore.add(messages.component(player.getUniqueId(), "reward-preview-chance", messages.placeholder("chance", formatChance(chancePercent))));
-            lore.add(messages.component(player.getUniqueId(), "reward-preview-id", messages.placeholder("id", reward.id())));
-            meta.lore(lore);
-            if (reward.customModelData() >= 0) {
-                meta.setCustomModelData(reward.customModelData());
-            }
-            if (reward.pityEligible()) {
-                meta.addEnchant(Enchantment.UNBREAKING, 1, true);
-                meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-            }
-            item.setItemMeta(meta);
-        }
-        return item;
+        return buildRewardPreview(
+                messages,
+                player,
+                crate.id(),
+                reward,
+                crate.rarities(),
+                chancePercent
+        );
     }
 
     public static ItemStack rewardPreview(MessageService messages, Player player, RewardDefinition reward, double chancePercent) {
-        Material material = Material.matchMaterial(reward.material());
-        if (material == null || material.isAir()) {
-            material = Material.PAPER;
-        }
+        return rewardPreview(messages, player, "", reward, chancePercent);
+    }
+
+    public static ItemStack rewardPreview(
+            MessageService messages,
+            Player player,
+            String crateId,
+            RewardDefinition reward,
+            double chancePercent
+    ) {
+        return buildRewardPreview(messages, player, crateId, reward, null, chancePercent);
+    }
+
+    public static ItemStack rewardDisplayItem(MessageService messages, Player player, String crateId, RewardDefinition reward) {
+        Material material = RewardDisplayService.material(reward);
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(rewardTitle(messages, player, reward, material));
+            applyRewardAppearance(item, meta, messages, player.getUniqueId(), crateId, reward, material);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public static ItemStack rewardDisplayItem(MessageService messages, Player player, RewardDefinition reward) {
+        return rewardDisplayItem(messages, player, "", reward);
+    }
+
+    private static ItemStack buildRewardPreview(
+            MessageService messages,
+            Player player,
+            String crateId,
+            RewardDefinition reward,
+            List<RarityTierSettings> rarities,
+            double chancePercent
+    ) {
+        Material material = RewardDisplayService.material(reward);
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            applyRewardAppearance(item, meta, messages, player.getUniqueId(), crateId, reward, material);
             List<Component> lore = new ArrayList<>();
-            if (hasCustomDisplayName(reward, material)) {
+            if (!RewardDisplayService.shouldUseMaterialName(reward, material)) {
                 lore.add(ItemDisplayNames.materialName(item));
             }
-            lore.add(messages.component(player.getUniqueId(), "reward-preview-chance", messages.placeholder("chance", formatChance(chancePercent))));
-            lore.add(messages.component(player.getUniqueId(), "reward-preview-id", messages.placeholder("id", reward.id())));
-            if (reward.customModelData() >= 0) {
-                meta.setCustomModelData(reward.customModelData());
-            }
-            if (reward.pityEligible()) {
-                meta.addEnchant(Enchantment.UNBREAKING, 1, true);
-                meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-            }
+            appendRarityLore(lore, messages, player.getUniqueId(), reward, rarities);
+            lore.add(messages.component(
+                    player.getUniqueId(),
+                    "reward-preview-chance",
+                    messages.placeholder("chance", formatChance(chancePercent))
+            ));
             meta.lore(lore);
             item.setItemMeta(meta);
         }
         return item;
     }
 
-    private static Component rewardTitle(
+    private static void applyRewardAppearance(
+            ItemStack item,
+            ItemMeta meta,
             MessageService messages,
-            Player player,
+            UUID playerId,
+            String crateId,
             RewardDefinition reward,
             Material material
     ) {
-        if (hasCustomDisplayName(reward, material)) {
-            return messages.component(
-                    player.getUniqueId(),
-                    "reward-preview-name",
-                    messages.placeholder("reward", reward.displayName())
-            );
+        if (RewardDisplayService.shouldUseMaterialName(reward, material)) {
+            RewardDisplayService.applyPreviewStackSize(item, reward, material);
+        } else {
+            meta.displayName(RewardDisplayService.displayName(messages, playerId, crateId, reward));
         }
-        return Component.translatable(material.translationKey()).decoration(TextDecoration.ITALIC, false);
+        applyRewardItemMeta(meta, reward);
     }
 
-    private static boolean hasCustomDisplayName(RewardDefinition reward, Material material) {
-        if (reward.displayName() == null || reward.displayName().isBlank()) {
-            return false;
+    public static Component rewardDisplayName(MessageService messages, Player player, String crateId, RewardDefinition reward) {
+        return RewardDisplayService.displayName(messages, player.getUniqueId(), crateId, reward);
+    }
+
+    public static Component rewardDisplayName(MessageService messages, Player player, RewardDefinition reward) {
+        return rewardDisplayName(messages, player, "", reward);
+    }
+
+    private static void applyRewardItemMeta(ItemMeta meta, RewardDefinition reward) {
+        if (reward.customModelData() >= 0) {
+            meta.setCustomModelData(reward.customModelData());
         }
-        String display = reward.displayName().trim();
-        String materialKey = material.name().toLowerCase(Locale.ROOT).replace('_', ' ');
-        return !display.equalsIgnoreCase(material.name())
-                && !display.equalsIgnoreCase(materialKey);
+        if (reward.pityEligible()) {
+            meta.addEnchant(Enchantment.UNBREAKING, 1, true);
+            meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+        }
     }
 
     public static ItemStack actionButton(MessageService messages, Player player, String titleKey, String loreKey) {
@@ -256,6 +271,57 @@ public final class GuiItemFactory {
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    public static void fillPreviewActionSlots(
+            org.bukkit.inventory.Inventory inventory,
+            List<Integer> slots,
+            String fillerMaterial
+    ) {
+        ItemStack filler = filler(fillerMaterial);
+        for (int slot : slots) {
+            if (slot >= 0 && slot < inventory.getSize()) {
+                inventory.setItem(slot, filler);
+            }
+        }
+    }
+
+    private static void appendRarityLore(
+            List<Component> lore,
+            MessageService messages,
+            UUID playerId,
+            RewardDefinition reward,
+            List<RarityTierSettings> tiers
+    ) {
+        if (reward.rarityId() == null || reward.rarityId().isBlank()) {
+            return;
+        }
+        RarityTierSettings matched = null;
+        if (tiers != null) {
+            for (RarityTierSettings tier : tiers) {
+                if (tier.id != null && tier.id.equalsIgnoreCase(reward.rarityId())) {
+                    matched = tier;
+                    break;
+                }
+            }
+        }
+        lore.add(rarityComponent(messages, playerId, reward.rarityId(), matched));
+    }
+
+    private static Component rarityComponent(
+            MessageService messages,
+            UUID playerId,
+            String rarityId,
+            RarityTierSettings tier
+    ) {
+        String key = "rarity-" + rarityId.toLowerCase(Locale.ROOT);
+        if (messages.hasKey(playerId, key)) {
+            return messages.component(playerId, key);
+        }
+        if (tier != null) {
+            return messages.parse(tier.color + tier.displayName);
+        }
+        return messages.component(playerId, "rarity-fallback", messages.placeholder("rarity", rarityId));
     }
 
     public static void fillBorder(org.bukkit.inventory.Inventory inventory, List<Integer> slots, String fillerMaterial) {

@@ -102,7 +102,7 @@ public final class CrateService {
             idleCrateDisplayService.spawnAll();
         }
         if (keyShopService != null) {
-            keyShopService.applySettings(config.cratesSettings().shop);
+            keyShopService.applySettings(config.crateShopSettings());
         }
         if (openingService != null) {
             openingService.applyConfig(config);
@@ -238,7 +238,7 @@ public final class CrateService {
             idleCrateDisplayService.spawnAll();
         }
         if (keyShopService != null) {
-            keyShopService.applySettings(pluginConfig.cratesSettings().shop);
+            keyShopService.applySettings(pluginConfig.crateShopSettings());
         }
         loaded = true;
     }
@@ -262,6 +262,7 @@ public final class CrateService {
             idleCrateDisplayService.shutdown();
         }
         if (physicalCrateService != null) {
+            physicalCrateService.shutdown();
             physicalCrateService.clearCache();
         }
     }
@@ -288,6 +289,10 @@ public final class CrateService {
 
     public CrateRegistry crateRegistry() {
         return crateRegistry;
+    }
+
+    public MessageService messageService() {
+        return messageService;
     }
 
     public KeyService keyService() {
@@ -360,7 +365,31 @@ public final class CrateService {
         if (!ready(player)) {
             return;
         }
+        if (physicalCrateService != null && !physicalCrateService.canOpen(player, instance)) {
+            messageService.send(player.getUniqueId(), "physical-crate-open-denied");
+            return;
+        }
+        Optional<CrateDefinition> crateOptional = crateRegistry.find(instance.crateId());
+        if (crateOptional.isPresent()) {
+            CrateDefinition crate = crateOptional.get();
+            if (!crate.opening().permission.isBlank() && !player.hasPermission(crate.opening().permission)) {
+                messageService.send(player.getUniqueId(), "no-permission");
+                return;
+            }
+        }
         menuService.openPlacedCrate(player, instance, openLocation);
+    }
+
+    public void pickupPlacedCrate(Player player, CrateInstance instance, Location blockLocation) {
+        if (!ready(player) || physicalCrateService == null || !physicalCrateService.enabled()) {
+            return;
+        }
+        Optional<CrateDefinition> crateOptional = crateRegistry.find(instance.crateId());
+        if (crateOptional.isEmpty()) {
+            messageService.send(player.getUniqueId(), "crate-not-found", messageService.placeholder("crate", instance.crateId()));
+            return;
+        }
+        physicalCrateService.pickupPlacedCrate(player, crateOptional.get(), instance, blockLocation);
     }
 
     public void openEditor(Player player) {

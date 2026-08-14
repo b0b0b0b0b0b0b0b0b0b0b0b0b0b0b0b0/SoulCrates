@@ -50,7 +50,9 @@ public final class CrateDefinitionSettings extends YamlSerializable {
     public java.util.List<RarityTierSettings> rarities = defaultRarities();
 
     @NewLine
-    @Comment({@CommentValue("Reward pool for this crate.")})
+    @Comment({
+            @CommentValue("Reward pool for this crate."),
+    })
     public List<RewardEntrySettings> rewards = defaultRewards();
 
     private static java.util.List<RarityTierSettings> defaultRarities() {
@@ -77,21 +79,21 @@ public final class CrateDefinitionSettings extends YamlSerializable {
         RewardEntrySettings common = new RewardEntrySettings();
         common.id = "common";
         common.weight = 70.0;
-        common.displayName = "Diamond Stack";
+        common.displayName = "";
         common.rarity = "common";
         common.material = "DIAMOND";
         common.grants = List.of("DIAMOND:3");
         RewardEntrySettings rare = new RewardEntrySettings();
         rare.id = "rare";
         rare.weight = 25.0;
-        rare.displayName = "Emerald Stack";
+        rare.displayName = "";
         rare.rarity = "rare";
         rare.material = "EMERALD";
         rare.grants = List.of("EMERALD:5");
         RewardEntrySettings legendary = new RewardEntrySettings();
         legendary.id = "legendary";
         legendary.weight = 5.0;
-        legendary.displayName = "Netherite Ingot";
+        legendary.displayName = "";
         legendary.rarity = "legendary";
         legendary.material = "NETHERITE_INGOT";
         legendary.grants = List.of("NETHERITE_INGOT:1");

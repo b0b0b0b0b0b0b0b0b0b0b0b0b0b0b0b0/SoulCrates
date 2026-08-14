@@ -169,6 +169,14 @@ public final class MessageService {
         return miniMessage.deserialize(template, resolvers);
     }
 
+    public boolean hasKey(UUID playerId, String key) {
+        return bundle(resolveLocaleId(playerId)).contains(key);
+    }
+
+    public boolean hasKey(String localeId, String key) {
+        return bundle(localeId).contains(key);
+    }
+
     public Component parse(String template) {
         return miniMessage.deserialize(normalizePlaceholderSyntax(template == null ? "" : template));
     }

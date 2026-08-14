@@ -5,6 +5,7 @@ import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import java.util.List;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -38,11 +39,7 @@ public final class BroadcastService {
             dramaticWinBroadcast(player, crate, reward);
             return;
         }
-        Bukkit.getServer().sendMessage(messageService.prefixed(
-                null,
-                "broadcast-win",
-                placeholders(player, crate, reward)
-        ));
+        broadcastToAll(player, crate, reward, "broadcast-win");
     }
 
     public boolean revealBroadcastEnabled() {
@@ -53,9 +50,8 @@ public final class BroadcastService {
         if (!shouldBroadcast(crate, reward)) {
             return;
         }
-        TagResolver[] resolvers = placeholders(player, crate, reward);
         for (String key : DRAMATIC_KEYS) {
-            Bukkit.getServer().sendMessage(messageService.prefixed(null, key, resolvers));
+            broadcastToAll(player, crate, reward, key);
         }
     }
 
@@ -72,10 +68,23 @@ public final class BroadcastService {
         return reward.broadcast();
     }
 
-    private TagResolver[] placeholders(Player player, CrateDefinition crate, RewardDefinition reward) {
+    private void broadcastToAll(Player winner, CrateDefinition crate, RewardDefinition reward, String messageKey) {
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            viewer.sendMessage(messageService.prefixed(
+                    viewer.getUniqueId(),
+                    messageKey,
+                    placeholders(winner, viewer, crate, reward)
+            ));
+        }
+    }
+
+    private TagResolver[] placeholders(Player winner, Player viewer, CrateDefinition crate, RewardDefinition reward) {
         return new TagResolver[] {
-                messageService.placeholder("player", player.getName()),
-                messageService.placeholder("reward", reward.displayName()),
+                messageService.placeholder("player", winner.getName()),
+                Placeholder.component(
+                        "reward",
+                        RewardDisplayService.displayName(messageService, viewer.getUniqueId(), crate.id(), reward)
+                ),
                 messageService.placeholder("crate", crate.displayName())
         };
     }

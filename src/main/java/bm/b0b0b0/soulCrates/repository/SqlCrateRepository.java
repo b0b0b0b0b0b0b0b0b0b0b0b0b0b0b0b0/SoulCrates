@@ -172,9 +172,11 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
                     y INTEGER,
                     z INTEGER,
                     created_at INTEGER NOT NULL,
-                    consumed_at INTEGER
+                    consumed_at INTEGER,
+                    placed_at INTEGER
                 )
                 """);
+        ensureInstancePlacedAtColumn(statement, false);
         statement.execute("""
                 CREATE INDEX IF NOT EXISTS idx_soulcrates_instances_location
                 ON soulcrates_instances (world, x, y, z)
@@ -284,9 +286,19 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
                     z INT,
                     created_at BIGINT NOT NULL,
                     consumed_at BIGINT,
+                    placed_at BIGINT,
                     INDEX idx_instances_location (world, x, y, z)
                 )
                 """);
+        ensureInstancePlacedAtColumn(statement, true);
+    }
+
+    private void ensureInstancePlacedAtColumn(Statement statement, boolean mysql) throws SQLException {
+        String type = mysql ? "BIGINT" : "INTEGER";
+        try {
+            statement.execute("ALTER TABLE soulcrates_instances ADD COLUMN placed_at " + type);
+        } catch (SQLException ignored) {
+        }
     }
 
     @Override
@@ -830,7 +842,7 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
         return CompletableFuture.supplyAsync(() -> {
             try (Connection connection = dataSource.getConnection();
                  var statement = connection.prepareStatement(
-                         "SELECT instance_id, crate_id, owner_uuid, state, world, x, y, z, created_at FROM soulcrates_instances WHERE instance_id = ?")) {
+                         "SELECT instance_id, crate_id, owner_uuid, state, world, x, y, z, created_at, placed_at FROM soulcrates_instances WHERE instance_id = ?")) {
                 statement.setString(1, instanceId.toString());
                 try (var resultSet = statement.executeQuery()) {
                     if (resultSet.next()) {
@@ -850,7 +862,7 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
             List<CrateInstance> instances = new ArrayList<>();
             try (Connection connection = dataSource.getConnection();
                  var statement = connection.prepareStatement(
-                         "SELECT instance_id, crate_id, owner_uuid, state, world, x, y, z, created_at FROM soulcrates_instances WHERE state IN (?, ?)")) {
+                         "SELECT instance_id, crate_id, owner_uuid, state, world, x, y, z, created_at, placed_at FROM soulcrates_instances WHERE state IN (?, ?)")) {
                 statement.setString(1, CrateInstanceState.PLACED.name());
                 statement.setString(2, CrateInstanceState.OPENING.name());
                 try (var resultSet = statement.executeQuery()) {
@@ -871,18 +883,20 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
             if (location.getWorld() == null) {
                 return false;
             }
+            long placedAt = System.currentTimeMillis();
             try (Connection connection = dataSource.getConnection();
                  var statement = connection.prepareStatement(
-                         "UPDATE soulcrates_instances SET state = ?, world = ?, x = ?, y = ?, z = ? "
+                         "UPDATE soulcrates_instances SET state = ?, world = ?, x = ?, y = ?, z = ?, placed_at = ? "
                                  + "WHERE instance_id = ? AND owner_uuid = ? AND state = ?")) {
                 statement.setString(1, CrateInstanceState.PLACED.name());
                 statement.setString(2, location.getWorld().getName());
                 statement.setInt(3, location.getBlockX());
                 statement.setInt(4, location.getBlockY());
                 statement.setInt(5, location.getBlockZ());
-                statement.setString(6, instanceId.toString());
-                statement.setString(7, ownerId.toString());
-                statement.setString(8, CrateInstanceState.UNPLACED.name());
+                statement.setLong(6, placedAt);
+                statement.setString(7, instanceId.toString());
+                statement.setString(8, ownerId.toString());
+                statement.setString(9, CrateInstanceState.UNPLACED.name());
                 return statement.executeUpdate() > 0;
             } catch (SQLException exception) {
                 logger.warning("Failed to place crate instance: " + exception.getMessage());
@@ -979,7 +993,7 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
             }
             try (Connection connection = dataSource.getConnection();
                  var statement = connection.prepareStatement(
-                         "SELECT instance_id, crate_id, owner_uuid, state, world, x, y, z, created_at "
+                         "SELECT instance_id, crate_id, owner_uuid, state, world, x, y, z, created_at, placed_at "
                                  + "FROM soulcrates_instances WHERE world = ? AND x = ? AND y = ? AND z = ? AND state IN (?, ?)")) {
                 statement.setString(1, location.getWorld().getName());
                 statement.setInt(2, location.getBlockX());
@@ -1010,16 +1024,31 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
             y = 0;
             z = 0;
         }
+        long createdAt = resultSet.getLong("created_at");
+        long placedAt = 0L;
+        try {
+            placedAt = resultSet.getLong("placed_at");
+            if (resultSet.wasNull()) {
+                placedAt = 0L;
+            }
+        } catch (SQLException ignored) {
+            placedAt = 0L;
+        }
+        CrateInstanceState state = CrateInstanceState.valueOf(resultSet.getString("state"));
+        if (placedAt <= 0L && (state == CrateInstanceState.PLACED || state == CrateInstanceState.OPENING)) {
+            placedAt = createdAt;
+        }
         return new CrateInstance(
                 UUID.fromString(resultSet.getString("instance_id")),
                 resultSet.getString("crate_id"),
                 UUID.fromString(resultSet.getString("owner_uuid")),
-                CrateInstanceState.valueOf(resultSet.getString("state")),
+                state,
                 world,
                 x,
                 y,
                 z,
-                resultSet.getLong("created_at")
+                createdAt,
+                placedAt
         );
     }
 

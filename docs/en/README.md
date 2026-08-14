@@ -41,8 +41,9 @@ In-game reward editor: `/sc editor` (existing crates only).
 |------|---------|
 | `config.yml` | DB, Redis, holograms, premium permissions |
 | `crates/<id>.yml` | Crate: rewards, keys, animation, opening |
-| `shop.yml` + `gui/shop.yml` | Key shop (`/sc shop`) |
-| `gui/*.yml` | Menu slots (preview, select, reroll…) |
+| `shop.yml` | Optional in-game key shop (`/sc shop`), **disabled by default** |
+| `gui/shop.yml` | Shop GUI slots (not prices) |
+| `gui/*.yml` | Other menu layouts |
 | `lang/messages_*.yml` | Player messages (MiniMessage) |
 
 After editing YAML: **`/sc reload`**.
@@ -109,20 +110,43 @@ idleEffects:
 
 rewards:
   - id: common
-    weight: 80
-    displayName: "1000$"
-    material: GOLD_INGOT
-    grants: ["vault:1000"]
+    weight: 70
+    displayName: "Diamond Stack"
+    material: DIAMOND
+    grants:
+      - "DIAMOND:3"
   - id: rare
+    weight: 25
+    displayName: "Emerald Stack"
+    material: EMERALD
+    grants:
+      - "EMERALD:5"
+  - id: legendary
     weight: 20
-    displayName: "Sword"
-    material: DIAMOND_SWORD
-    grants: ["DIAMOND_SWORD:1"]
+    displayName: "Netherite Ingot"
+    material: NETHERITE_INGOT
+    grants:
+      - "NETHERITE_INGOT:1"
     broadcast: true
 ```
 
-**grants:** `MATERIAL:amount`, `vault:amount`.  
-Reward **commands** support `{player}`, `{crate}`, `{reward}`.
+**grants** — items: `MATERIAL:amount`.  
+**commands** — optional, for ranks/money/kits when you need them. Placeholders: `{player}`, `{uuid}`, `{crate}`, `{reward}`.
+
+Default crate gives **items only**, no economy commands.
+
+---
+
+## `shop.yml` (optional)
+
+Default: `enabled: false`. Enable only for an in-game Vault shop; paid keys are usually sold on a website.
+
+```yaml
+enabled: false
+entries: []
+```
+
+Legacy `vault:1000` in reward grants **does not work** — use `commands` if needed.
 
 ---
 

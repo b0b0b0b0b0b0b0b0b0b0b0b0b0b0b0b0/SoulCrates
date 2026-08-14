@@ -113,6 +113,12 @@ public final class CratePreviewMenu extends SoulMenu {
                 multiOpenSlots.put(slot, amount);
                 getInventory().setItem(slot, multiOpenButton(player, amount, material));
             }
+        } else {
+            GuiItemFactory.fillPreviewActionSlots(
+                    getInventory(),
+                    previewSettings.multiOpenSlots,
+                    previewSettings.grid.borderFillerMaterial
+            );
         }
         if (previewSettings.backSlot >= 0) {
             getInventory().setItem(

@@ -8,6 +8,7 @@ import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.service.reward.BroadcastService;
+import bm.b0b0b0.soulCrates.service.reward.RewardDisplayService;
 import bm.b0b0b0.soulCrates.session.CrateOpeningSession;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -15,6 +16,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -551,7 +554,10 @@ public final class WorldCarouselPhase implements PhaseRunner {
         messageService.send(
                 player.getUniqueId(),
                 "carousel-reveal-self",
-                messageService.placeholder("reward", rolledReward.displayName()),
+                Placeholder.component(
+                        "reward",
+                        RewardDisplayService.displayName(messageService, player.getUniqueId(), crateDefinition.id(), rolledReward)
+                ),
                 messageService.placeholder("crate", crateDefinition.displayName())
         );
     }
@@ -793,11 +799,16 @@ public final class WorldCarouselPhase implements PhaseRunner {
     }
 
     private Component rewardLabel(Player player, RewardDefinition reward, boolean highlight) {
-        String prefix = rarityPrefix(reward);
+        Component name = RewardDisplayService.displayName(
+                messageService,
+                player.getUniqueId(),
+                crateDefinition.id(),
+                reward
+        );
         if (highlight) {
-            return messageService.parse("<bold>" + prefix + reward.displayName() + "</bold>");
+            name = name.decoration(TextDecoration.BOLD, true);
         }
-        return messageService.parse(prefix + reward.displayName());
+        return messageService.parse(rarityPrefix(reward)).append(name);
     }
 
     private String rarityPrefix(RewardDefinition reward) {

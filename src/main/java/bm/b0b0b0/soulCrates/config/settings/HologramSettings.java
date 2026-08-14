@@ -61,6 +61,10 @@ public final class HologramSettings extends YamlSerializable {
 
     public float shadowStrength = 1.0f;
 
+    @Comment({
+            @CommentValue("Placeholders: {crate}, {crate_id}, {reward:<id>}, {last_winner_reward}."),
+            @CommentValue("Vanilla holograms resolve per viewer locale. DecentHolograms lines use %soulcrates_reward_<crate>_<id>% and %soulcrates_last_winner_<crate>_reward%."),
+    })
     public List<String> lines = List.of(
             "<gold>{crate}</gold>",
             "<gray>Click to open · Shift preview</gray>"

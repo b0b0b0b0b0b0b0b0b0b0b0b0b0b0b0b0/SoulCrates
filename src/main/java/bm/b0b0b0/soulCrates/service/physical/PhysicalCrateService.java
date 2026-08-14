@@ -3,20 +3,25 @@ package bm.b0b0b0.soulCrates.service.physical;
 import bm.b0b0b0.soulCrates.config.settings.PhysicalCrateSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
-import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.CrateInstance;
 import bm.b0b0b0.soulCrates.model.CrateInstanceState;
 import bm.b0b0b0.soulCrates.repository.CrateRepository;
+import bm.b0b0b0.soulCrates.service.CrateRegistry;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import bm.b0b0b0.soulCrates.util.SoulCratesKeys;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.TileState;
 import org.bukkit.entity.Player;
@@ -34,6 +39,8 @@ public final class PhysicalCrateService {
     private final ConcurrentHashMap<UUID, CrateInstance> cacheById = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, UUID> cacheByLocation = new ConcurrentHashMap<>();
     private PhysicalCrateSettings settings = new PhysicalCrateSettings();
+    private CrateRegistry crateRegistry;
+    private ScheduledTask expirationTask;
 
     public PhysicalCrateService(Plugin plugin, MessageService messageService, CrateRepository repository) {
         this.plugin = plugin;
@@ -43,16 +50,27 @@ public final class PhysicalCrateService {
 
     public void applySettings(PhysicalCrateSettings settings) {
         this.settings = settings == null ? new PhysicalCrateSettings() : settings;
+        restartExpirationWatcher();
+    }
+
+    public void attachCrateRegistry(CrateRegistry crateRegistry) {
+        this.crateRegistry = crateRegistry;
     }
 
     public void loadCache() {
-        repository.loadPlacedInstances().thenAccept(instances -> {
+        repository.loadPlacedInstances().thenAccept(instances -> PluginSchedulers.runGlobal(plugin, () -> {
             cacheById.clear();
             cacheByLocation.clear();
             for (CrateInstance instance : instances) {
                 remember(instance);
             }
-        });
+            sweepExpiredPlacedCrates();
+            restartExpirationWatcher();
+        }));
+    }
+
+    public void shutdown() {
+        stopExpirationWatcher();
     }
 
     public void clearCache() {
@@ -169,7 +187,8 @@ public final class PhysicalCrateService {
                     0,
                     0,
                     0,
-                    System.currentTimeMillis()
+                    System.currentTimeMillis(),
+                    0L
             );
             meta.displayName(messageService.component(
                     ownerId,
@@ -232,10 +251,13 @@ public final class PhysicalCrateService {
     }
 
     public java.util.concurrent.CompletableFuture<Boolean> tryPlace(UUID instanceId, UUID ownerId, Location location, String crateId) {
+        long placedAt = System.currentTimeMillis();
         return repository.tryPlaceInstance(instanceId, ownerId, location).thenApply(success -> {
             if (!success) {
                 return false;
             }
+            CrateInstance previous = cacheById.get(instanceId);
+            long createdAt = previous != null ? previous.createdAt() : placedAt;
             CrateInstance placed = new CrateInstance(
                     instanceId,
                     crateId.toLowerCase(),
@@ -245,7 +267,8 @@ public final class PhysicalCrateService {
                     location.getBlockX(),
                     location.getBlockY(),
                     location.getBlockZ(),
-                    System.currentTimeMillis()
+                    createdAt,
+                    placedAt
             );
             updateCache(placed);
             return true;
@@ -268,7 +291,8 @@ public final class PhysicalCrateService {
                         current.x(),
                         current.y(),
                         current.z(),
-                        current.createdAt()
+                        current.createdAt(),
+                        current.placedAt()
                 ));
             }
             return true;
@@ -300,7 +324,8 @@ public final class PhysicalCrateService {
                         current.x(),
                         current.y(),
                         current.z(),
-                        current.createdAt()
+                        current.createdAt(),
+                        current.placedAt()
                 ));
             }
             return true;
@@ -324,7 +349,8 @@ public final class PhysicalCrateService {
                         0,
                         0,
                         0,
-                        current.createdAt()
+                        current.createdAt(),
+                        0L
                 ));
             }
             return true;
@@ -405,29 +431,181 @@ public final class PhysicalCrateService {
         return false;
     }
 
-    public void returnPlacedCrate(Player player, CrateDefinition crate, CrateInstance instance, Location location) {
+    public void pickupPlacedCrate(Player player, CrateDefinition crate, CrateInstance instance, Location location) {
         if (player == null || crate == null || instance == null || location == null || location.getWorld() == null) {
             return;
         }
-        tryUnplace(instance.instanceId(), instance.ownerId(), location).thenAccept(success ->
-                PluginSchedulers.run(plugin, player, () -> {
+        if (!canBreak(player, instance)) {
+            messageService.send(player.getUniqueId(), "physical-crate-pickup-denied");
+            return;
+        }
+        returnPlacedCrate(player, crate, instance, location, true);
+    }
+
+    public void returnPlacedCrate(Player player, CrateDefinition crate, CrateInstance instance, Location location) {
+        returnPlacedCrate(player, crate, instance, location, false);
+    }
+
+    private void returnPlacedCrate(
+            Player actor,
+            CrateDefinition crate,
+            CrateInstance instance,
+            Location location,
+            boolean pickupEffects
+    ) {
+        if (crate == null || instance == null || location == null || location.getWorld() == null) {
+            return;
+        }
+        UUID ownerId = instance.ownerId();
+        tryUnplace(instance.instanceId(), ownerId, location).thenAccept(success ->
+                PluginSchedulers.runAt(plugin, location, () -> {
+                    if (!success) {
+                        if (pickupEffects && actor != null) {
+                            messageService.send(actor.getUniqueId(), "physical-crate-pickup-denied");
+                        }
+                        return;
+                    }
+                    finalizeUnplacedAtLocation(crate, instance, location, pickupEffects, false);
+                })
+        );
+    }
+
+    private void finalizeUnplacedAtLocation(
+            CrateDefinition crate,
+            CrateInstance instance,
+            Location location,
+            boolean pickupEffects,
+            boolean expired
+    ) {
+        UUID ownerId = instance.ownerId();
+        removePlacedBlock(location);
+        ItemStack restored = createItem(crate, instance.instanceId(), ownerId);
+        Player owner = Bukkit.getPlayer(ownerId);
+        if (owner != null && owner.isOnline()) {
+            if (!hasInstanceItem(owner, instance.instanceId())) {
+                Map<Integer, ItemStack> overflow = owner.getInventory().addItem(restored);
+                for (ItemStack leftover : overflow.values()) {
+                    owner.getWorld().dropItemNaturally(owner.getLocation(), leftover);
+                }
+            }
+            if (expired) {
+                messageService.send(
+                        owner.getUniqueId(),
+                        "physical-crate-expired",
+                        messageService.placeholder("crate", crate.displayName()),
+                        messageService.placeholder("seconds", Integer.toString(settings.openTimeoutSeconds))
+                );
+                return;
+            }
+            if (pickupEffects) {
+                playPickupEffects(owner, location);
+                messageService.send(
+                        owner.getUniqueId(),
+                        "physical-crate-picked-up",
+                        messageService.placeholder("crate", crate.displayName())
+                );
+            } else {
+                messageService.send(
+                        owner.getUniqueId(),
+                        "physical-crate-returned",
+                        messageService.placeholder("crate", crate.displayName())
+                );
+            }
+            return;
+        }
+        location.getWorld().dropItemNaturally(location.clone().add(0.5, 1.0, 0.5), restored);
+    }
+
+    private void restartExpirationWatcher() {
+        stopExpirationWatcher();
+        if (!enabled() || !isOpenTimeoutEnabled()) {
+            return;
+        }
+        expirationTask = PluginSchedulers.runGlobalRepeating(plugin, 20L, 20L, this::sweepExpiredPlacedCrates);
+    }
+
+    private void stopExpirationWatcher() {
+        if (expirationTask != null) {
+            expirationTask.cancel();
+            expirationTask = null;
+        }
+    }
+
+    private void sweepExpiredPlacedCrates() {
+        if (!enabled() || !isOpenTimeoutEnabled() || crateRegistry == null) {
+            return;
+        }
+        List<CrateInstance> snapshot = new ArrayList<>(cacheById.values());
+        for (CrateInstance instance : snapshot) {
+            if (!isPlacementExpired(instance)) {
+                continue;
+            }
+            Optional<CrateDefinition> crateOptional = crateRegistry.find(instance.crateId());
+            if (crateOptional.isEmpty()) {
+                continue;
+            }
+            expirePlacedCrate(crateOptional.get(), instance);
+        }
+    }
+
+    private void expirePlacedCrate(CrateDefinition crate, CrateInstance instance) {
+        Location location = resolveInstanceLocation(instance);
+        if (location == null) {
+            return;
+        }
+        UUID ownerId = instance.ownerId();
+        tryUnplace(instance.instanceId(), ownerId, location).thenAccept(success ->
+                PluginSchedulers.runAt(plugin, location, () -> {
                     if (!success) {
                         return;
                     }
-                    PluginSchedulers.runAt(plugin, location, () -> removePlacedBlock(location));
-                    if (!hasInstanceItem(player, instance.instanceId())) {
-                        ItemStack restored = createItem(crate, instance.instanceId(), instance.ownerId());
-                        Map<Integer, ItemStack> overflow = player.getInventory().addItem(restored);
-                        for (ItemStack leftover : overflow.values()) {
-                            player.getWorld().dropItemNaturally(player.getLocation(), leftover);
-                        }
-                    }
-                    messageService.send(
-                            player.getUniqueId(),
-                            "physical-crate-returned",
-                            messageService.placeholder("crate", crate.displayName())
-                    );
+                    finalizeUnplacedAtLocation(crate, instance, location, false, true);
                 })
+        );
+    }
+
+    private boolean isOpenTimeoutEnabled() {
+        return settings.openTimeoutEnabled && settings.openTimeoutSeconds > 0;
+    }
+
+    private boolean isPlacementExpired(CrateInstance instance) {
+        if (instance == null || instance.state() != CrateInstanceState.PLACED) {
+            return false;
+        }
+        if (!isOpenTimeoutEnabled()) {
+            return false;
+        }
+        long placedAt = instance.placedAt();
+        if (placedAt <= 0L) {
+            return false;
+        }
+        long deadline = placedAt + settings.openTimeoutSeconds * 1000L;
+        return System.currentTimeMillis() >= deadline;
+    }
+
+    private Location resolveInstanceLocation(CrateInstance instance) {
+        if (instance == null || instance.world() == null) {
+            return null;
+        }
+        World world = Bukkit.getWorld(instance.world());
+        if (world == null) {
+            return null;
+        }
+        return new Location(world, instance.x(), instance.y(), instance.z());
+    }
+
+    private void playPickupEffects(Player player, Location location) {
+        Location center = location.clone().add(0.5, 0.65, 0.5);
+        player.playSound(center, Sound.ENTITY_ITEM_PICKUP, 0.85f, 1.15f);
+        player.playSound(center, Sound.BLOCK_CHEST_CLOSE, 0.55f, 1.35f);
+        location.getWorld().spawnParticle(
+                Particle.TOTEM_OF_UNDYING,
+                center,
+                18,
+                0.28,
+                0.35,
+                0.28,
+                0.02
         );
     }
 
@@ -436,11 +614,7 @@ public final class PhysicalCrateService {
         lore.add(messageService.component(ownerId, "physical-crate-item-lore-line1"));
         lore.add(messageService.component(ownerId, "physical-crate-item-lore-line2"));
         lore.add(messageService.component(ownerId, "physical-crate-item-lore-line3"));
-        lore.add(messageService.component(
-                ownerId,
-                "physical-crate-item-lore-serial",
-                messageService.placeholder("serial", instance.serial())
-        ));
+        lore.add(messageService.component(ownerId, "physical-crate-item-lore-line4"));
         lore.add(net.kyori.adventure.text.Component.empty());
         lore.add(messageService.component(
                 ownerId,

@@ -5,6 +5,7 @@ import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
+import bm.b0b0b0.soulCrates.service.reward.RewardDisplayService;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
 import bm.b0b0b0.soulCrates.service.reward.WinLimitService;
 import java.util.HashMap;
@@ -194,10 +195,11 @@ public final class CrateSelectRewardMenu extends SoulMenu {
         ItemStack item = GuiItemFactory.filler(selectSettings.lockedMaterial);
         if (item.hasItemMeta()) {
             var meta = item.getItemMeta();
-            meta.displayName(messageService.component(
+            meta.displayName(RewardDisplayService.displayName(
+                    messageService,
                     player.getUniqueId(),
-                    "reward-preview-name",
-                    messageService.placeholder("reward", reward.displayName())
+                    crateDefinition.id(),
+                    reward
             ));
             meta.lore(List.of(messageService.component(player.getUniqueId(), loreKey)));
             item.setItemMeta(meta);
