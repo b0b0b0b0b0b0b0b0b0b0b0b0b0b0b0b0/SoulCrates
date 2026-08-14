@@ -54,4 +54,37 @@ public final class RewardEntrySettings extends YamlSerializable {
             @CommentValue("Broadcast this reward to the whole server on win."),
     })
     public boolean broadcast = false;
+
+    @Comment({
+            @CommentValue("Max wins per player for this reward. -1 = unlimited."),
+    })
+    public int playerWinLimit = -1;
+
+    @Comment({
+            @CommentValue("Max wins server-wide for this reward. -1 = unlimited."),
+    })
+    public int globalWinLimit = -1;
+
+    public int winLimitCooldownSeconds = 0;
+
+    public int globalWinLimitCooldownSeconds = 0;
+
+    @Comment({
+            @CommentValue("Unix epoch ms when reward expires. 0 = never."),
+    })
+    public long expiresAtEpochMs = 0L;
+
+    @Comment({
+            @CommentValue("Keys required to redeem in SELECT mode. 0 = use crate opening.keysRequired."),
+    })
+    public int requiredKeys = 0;
+
+    public java.util.List<String> requiredPermissions = new java.util.ArrayList<>();
+
+    public java.util.List<String> restrictedPermissions = new java.util.ArrayList<>();
+
+    public boolean enabled = true;
+
+    @net.elytrium.serializer.annotations.NewLine
+    public AlternativeRewardSettings alternative = new AlternativeRewardSettings();
 }

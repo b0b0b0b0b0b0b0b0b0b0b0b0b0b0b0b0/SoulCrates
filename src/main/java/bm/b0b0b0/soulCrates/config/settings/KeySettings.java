@@ -32,4 +32,9 @@ public final class KeySettings extends YamlSerializable {
             @CommentValue("Guaranteed rarity for keys of this crate. Empty = normal roll."),
     })
     public String guaranteedRarity = "";
+
+    @Comment({
+            @CommentValue("Key rarity tier for SELECT mode gating. Empty = any reward."),
+    })
+    public String rarity = "";
 }

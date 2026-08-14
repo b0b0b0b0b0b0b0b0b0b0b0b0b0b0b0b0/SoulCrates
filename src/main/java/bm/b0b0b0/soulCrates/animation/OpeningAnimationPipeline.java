@@ -106,7 +106,7 @@ public final class OpeningAnimationPipeline {
         Bukkit.getPluginManager().callEvent(new CrateOpenPhaseStartEvent(session.context(), kind));
         currentPhase.load(player, session);
         if (session.displayComponent() != null) {
-            session.displayComponent().playAnimation(currentPhase.kind().name().toLowerCase());
+            session.displayComponent().playAnimation(phaseFactory.animationId(crateDefinition, kind));
         }
         if (kind == OpeningPhaseKind.THIRD) {
             session.markRevealing();

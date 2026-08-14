@@ -83,6 +83,30 @@ public final class KeyService {
                 .put(crateId.toLowerCase(Locale.ROOT), Math.max(0, amount));
     }
 
+    public int totalKeys(Player player, String crateId) {
+        int total = virtualKeys(player.getUniqueId(), crateId);
+        if (player != null) {
+            total += countPhysicalKeys(player, crateId);
+        }
+        return total;
+    }
+
+    public CompletableFuture<Boolean> transferVirtualKeys(UUID fromId, UUID toId, String crateId, int amount) {
+        if (amount <= 0 || fromId.equals(toId)) {
+            return CompletableFuture.completedFuture(false);
+        }
+        int fromBalance = virtualKeys(fromId, crateId);
+        if (fromBalance < amount) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return persistVirtualKeys(fromId, crateId, fromBalance - amount).thenCompose(saved -> {
+            if (!saved) {
+                return CompletableFuture.completedFuture(false);
+            }
+            return giveVirtualKeys(toId, crateId, amount).thenApply(ignored -> true);
+        });
+    }
+
     public int countPhysicalKeys(Player player, String crateId) {
         int total = 0;
         String normalized = crateId.toLowerCase(Locale.ROOT);

@@ -9,6 +9,8 @@ import bm.b0b0b0.soulCrates.config.settings.GuiGeneralSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiPreviewSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiRerollSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiShopSettings;
+import bm.b0b0b0.soulCrates.config.settings.GuiSelectSettings;
+import bm.b0b0b0.soulCrates.config.settings.GuiVirtualKeysSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiSpinnerSettings;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import java.util.List;
@@ -24,6 +26,8 @@ public final class PluginConfig {
     private final GuiRerollSettings guiRerollSettings;
     private final GuiClaimSettings guiClaimSettings;
     private final GuiShopSettings guiShopSettings;
+    private final GuiSelectSettings guiSelectSettings;
+    private final GuiVirtualKeysSettings guiVirtualKeysSettings;
     private final CrateShopSettings crateShopSettings;
     private final List<CrateDefinition> crateDefinitions;
 
@@ -37,6 +41,8 @@ public final class PluginConfig {
             GuiRerollSettings guiRerollSettings,
             GuiClaimSettings guiClaimSettings,
             GuiShopSettings guiShopSettings,
+            GuiSelectSettings guiSelectSettings,
+            GuiVirtualKeysSettings guiVirtualKeysSettings,
             CrateShopSettings crateShopSettings,
             List<CrateDefinition> crateDefinitions
     ) {
@@ -49,6 +55,8 @@ public final class PluginConfig {
         this.guiRerollSettings = guiRerollSettings;
         this.guiClaimSettings = guiClaimSettings;
         this.guiShopSettings = guiShopSettings;
+        this.guiSelectSettings = guiSelectSettings;
+        this.guiVirtualKeysSettings = guiVirtualKeysSettings;
         this.crateShopSettings = crateShopSettings;
         this.crateDefinitions = crateDefinitions;
     }
@@ -87,6 +95,14 @@ public final class PluginConfig {
 
     public GuiShopSettings guiShopSettings() {
         return guiShopSettings;
+    }
+
+    public GuiSelectSettings guiSelectSettings() {
+        return guiSelectSettings;
+    }
+
+    public GuiVirtualKeysSettings guiVirtualKeysSettings() {
+        return guiVirtualKeysSettings;
     }
 
     public CrateShopSettings crateShopSettings() {

@@ -1,11 +1,16 @@
 package bm.b0b0b0.soulCrates.config;
 
+import bm.b0b0b0.soulCrates.config.AnimationPresetRegistry;
 import bm.b0b0b0.soulCrates.config.settings.CrateDefinitionSettings;
+import bm.b0b0b0.soulCrates.config.settings.IdleEffectSettings;
 import bm.b0b0b0.soulCrates.config.settings.RarityTierSettings;
 import bm.b0b0b0.soulCrates.config.settings.RewardEntrySettings;
+import bm.b0b0b0.soulCrates.config.settings.AnimationDisplaySettings;
+import bm.b0b0b0.soulCrates.config.settings.AnimationSettings;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.DisplayEngineKind;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
+import bm.b0b0b0.soulCrates.model.RewardWinLimits;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -54,6 +59,20 @@ public final class CrateDefinitionLoader {
         }
         List<RewardDefinition> rewards = new ArrayList<>();
         for (RewardEntrySettings entry : settings.rewards) {
+            if (!entry.enabled) {
+                continue;
+            }
+            RewardWinLimits limits = new RewardWinLimits(
+                    entry.playerWinLimit,
+                    entry.globalWinLimit,
+                    entry.winLimitCooldownSeconds,
+                    entry.globalWinLimitCooldownSeconds,
+                    entry.expiresAtEpochMs,
+                    entry.requiredKeys,
+                    List.copyOf(entry.requiredPermissions),
+                    List.copyOf(entry.restrictedPermissions),
+                    entry.alternative
+            );
             rewards.add(new RewardDefinition(
                     entry.id.toLowerCase(Locale.ROOT),
                     entry.rarity == null ? "" : entry.rarity.toLowerCase(Locale.ROOT),
@@ -64,10 +83,17 @@ public final class CrateDefinitionLoader {
                     List.copyOf(entry.grants),
                     List.copyOf(entry.commands),
                     entry.pityEligible,
-                    entry.broadcast
+                    entry.broadcast,
+                    true,
+                    limits
             ));
         }
         List<RarityTierSettings> rarities = settings.rarities == null ? List.of() : List.copyOf(settings.rarities);
+        List<IdleEffectSettings> idleEffects = settings.idleEffects == null ? List.of() : List.copyOf(settings.idleEffects);
+        AnimationSettings animations = AnimationPresetRegistry.resolveOrDefault(settings.animations);
+        AnimationDisplaySettings animationDisplay = settings.animationDisplay == null
+                ? new AnimationDisplaySettings()
+                : settings.animationDisplay;
         return new CrateDefinition(
                 settings.id.toLowerCase(Locale.ROOT),
                 settings.displayName,
@@ -76,7 +102,9 @@ public final class CrateDefinitionLoader {
                 settings.engine.modelId == null ? "" : settings.engine.modelId,
                 settings.engine.idleAnimation,
                 settings.engine.closeAnimation,
-                settings.animations,
+                animations,
+                animationDisplay,
+                idleEffects,
                 settings.opening,
                 settings.keys,
                 settings.reroll,

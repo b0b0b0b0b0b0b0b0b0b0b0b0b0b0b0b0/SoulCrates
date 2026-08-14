@@ -130,7 +130,9 @@ public final class CrateRewardListMenu extends SoulMenu {
                 List.copyOf(entry.grants),
                 List.copyOf(entry.commands),
                 entry.pityEligible,
-                entry.broadcast
+                entry.broadcast,
+                entry.enabled,
+                null
         );
     }
 

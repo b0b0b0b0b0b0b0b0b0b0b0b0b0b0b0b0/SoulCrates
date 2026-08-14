@@ -6,12 +6,14 @@ import bm.b0b0b0.soulCrates.config.settings.CrateDefinitionSettings;
 import bm.b0b0b0.soulCrates.gui.CrateClaimMenu;
 import bm.b0b0b0.soulCrates.gui.CratePreviewMenu;
 import bm.b0b0b0.soulCrates.gui.KeyShopMenu;
+import bm.b0b0b0.soulCrates.gui.VirtualKeysMenu;
 import bm.b0b0b0.soulCrates.gui.editor.CrateEditorListMenu;
 import bm.b0b0b0.soulCrates.gui.editor.CrateEditorMenu;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
 import bm.b0b0b0.soulCrates.service.claim.ClaimService;
+import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.service.open.CrateOpenCallbacks;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
 import bm.b0b0b0.soulCrates.service.shop.KeyShopService;
@@ -30,6 +32,7 @@ public final class CrateMenuService {
     private final RewardRollService rewardRollService;
     private final KeyShopService keyShopService;
     private final ClaimService claimService;
+    private final KeyService keyService;
     private final CrateOpenCallbacks openCallbacks;
     private final Consumer<PluginConfig> configApplier;
     private PluginConfig pluginConfig;
@@ -43,6 +46,7 @@ public final class CrateMenuService {
             RewardRollService rewardRollService,
             KeyShopService keyShopService,
             ClaimService claimService,
+            KeyService keyService,
             CrateOpenCallbacks openCallbacks,
             Consumer<PluginConfig> configApplier
     ) {
@@ -54,6 +58,7 @@ public final class CrateMenuService {
         this.rewardRollService = rewardRollService;
         this.keyShopService = keyShopService;
         this.claimService = claimService;
+        this.keyService = keyService;
         this.openCallbacks = openCallbacks;
         this.configApplier = configApplier;
     }
@@ -137,6 +142,18 @@ public final class CrateMenuService {
                 pluginConfig.cratesSettings().shop,
                 crateRegistry,
                 (target, entry) -> keyShopService.purchase(target, entry)
+        );
+        PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));
+    }
+
+    public void openVirtualKeys(Player player) {
+        VirtualKeysMenu menu = new VirtualKeysMenu(
+                player.getUniqueId(),
+                messageService,
+                pluginConfig.guiVirtualKeysSettings(),
+                crateRegistry,
+                keyService,
+                null
         );
         PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));
     }

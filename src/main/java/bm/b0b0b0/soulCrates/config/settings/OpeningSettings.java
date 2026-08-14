@@ -42,6 +42,14 @@ public final class OpeningSettings extends YamlSerializable {
     })
     public boolean allowMultiOpen = true;
 
+    @Comment({
+            @CommentValue("RANDOM = roll pool. SELECT = player picks reward from menu."),
+    })
+    public String rewardsMode = "RANDOM";
+
+    @NewLine
+    public OpenCostSettings openCost = new OpenCostSettings();
+
     @NewLine
     public MassOpeningSettings massOpening = new MassOpeningSettings();
 }

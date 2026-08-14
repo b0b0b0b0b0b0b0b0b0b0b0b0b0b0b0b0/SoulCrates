@@ -4,6 +4,9 @@ import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.DisplayEngineKind;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Directional;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
@@ -28,6 +31,17 @@ public final class VanillaDisplayEngine implements DisplayEngine {
         return new VanillaDisplayComponent(crateDefinition, location);
     }
 
+    public static boolean usesExistingBlock(CrateDefinition crateDefinition, Location location) {
+        if (location.getWorld() == null) {
+            return false;
+        }
+        Material material = crateDefinition.blockMaterial();
+        if (material == null || material.isAir()) {
+            return false;
+        }
+        return location.getBlock().getType() == material;
+    }
+
     private static final class VanillaDisplayComponent implements DisplayComponent {
 
         private final CrateDefinition crateDefinition;
@@ -41,14 +55,21 @@ public final class VanillaDisplayEngine implements DisplayEngine {
 
         @Override
         public void create() {
-            if (location.getWorld() == null) {
+            if (location.getWorld() == null || usesExistingBlock(crateDefinition, location)) {
                 return;
             }
-            display = location.getWorld().spawn(location, BlockDisplay.class, entity -> {
-                Material material = crateDefinition.blockMaterial() == null ? Material.ENDER_CHEST : crateDefinition.blockMaterial();
-                entity.setBlock(material.createBlockData());
+            Material material = crateDefinition.blockMaterial() == null ? Material.ENDER_CHEST : crateDefinition.blockMaterial();
+            Location center = location.clone().add(0.5, 0.5, 0.5);
+            display = center.getWorld().spawn(center, BlockDisplay.class, entity -> {
+                BlockData blockData = material.createBlockData();
+                if (blockData instanceof Directional directional) {
+                    directional.setFacing(BlockFace.NORTH);
+                    entity.setBlock(blockData);
+                } else {
+                    entity.setBlock(material.createBlockData());
+                }
                 entity.setTransformation(new Transformation(
-                        new Vector3f(0.0f, 0.5f, 0.0f),
+                        new Vector3f(0.0f, 0.0f, 0.0f),
                         new AxisAngle4f(0.0f, 0.0f, 1.0f, 0.0f),
                         new Vector3f(1.0f, 1.0f, 1.0f),
                         new AxisAngle4f(0.0f, 0.0f, 1.0f, 0.0f)

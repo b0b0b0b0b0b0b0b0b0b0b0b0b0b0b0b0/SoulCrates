@@ -25,6 +25,7 @@ import bm.b0b0b0.soulCrates.service.CrateService;
 import bm.b0b0b0.soulCrates.service.claim.ClaimService;
 import bm.b0b0b0.soulCrates.service.hologram.CrateHologramService;
 import bm.b0b0b0.soulCrates.service.idle.IdleCrateDisplayService;
+import bm.b0b0b0.soulCrates.service.idle.IdleParticleService;
 import bm.b0b0b0.soulCrates.service.lootbox.LootBoxService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
@@ -167,13 +168,15 @@ public final class SoulCratesCore {
                 crateRegistry,
                 pluginConfig.cratesSettings().idleDisplay.hologram
         );
+        IdleParticleService idleParticleService = new IdleParticleService(plugin, pluginConfig.cratesSettings().idleDisplay);
         idleCrateDisplayService = new IdleCrateDisplayService(
                 plugin,
                 pluginConfig.cratesSettings().idleDisplay,
                 displayEngineRegistry,
                 crateRegistry,
                 locationService,
-                hologramService
+                hologramService,
+                idleParticleService
         );
         var crateIds = crateRegistry.list().stream().map(crate -> crate.id()).toList();
         redisMirror.startSubscriber(
@@ -214,7 +217,8 @@ public final class SoulCratesCore {
                     configurationLoader,
                     rewardDeliveryService,
                     displayEngineRegistry,
-                    phaseFactory
+                    phaseFactory,
+                    hookRegistry
             );
             for (String crateId : crateIds) {
                 lastWinnerService.preload(crateId);

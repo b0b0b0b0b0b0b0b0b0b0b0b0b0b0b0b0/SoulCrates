@@ -1,6 +1,8 @@
 package bm.b0b0b0.soulCrates.model;
 
+import bm.b0b0b0.soulCrates.config.settings.AnimationDisplaySettings;
 import bm.b0b0b0.soulCrates.config.settings.AnimationSettings;
+import bm.b0b0b0.soulCrates.config.settings.IdleEffectSettings;
 import bm.b0b0b0.soulCrates.config.settings.KeySettings;
 import bm.b0b0b0.soulCrates.config.settings.LootBoxSettings;
 import bm.b0b0b0.soulCrates.config.settings.OpeningSettings;
@@ -19,6 +21,8 @@ public record CrateDefinition(
         String idleAnimation,
         String closeAnimation,
         AnimationSettings animations,
+        AnimationDisplaySettings animationDisplay,
+        List<IdleEffectSettings> idleEffects,
         OpeningSettings opening,
         KeySettings keys,
         RerollSettings reroll,

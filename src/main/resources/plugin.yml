@@ -38,6 +38,10 @@ permissions:
     default: true
   soulcrates.command.claim:
     default: true
+  soulcrates.command.virtualkeys:
+    default: true
+  soulcrates.command.paykey:
+    default: true
   soulcrates.command.givelootbox:
     default: op
   soulcrates.open.skip:

@@ -20,7 +20,25 @@ public final class RerollService {
 
     public int rerollsRemaining(CrateOpeningSession session) {
         RerollSettings settings = session.crateDefinition().reroll();
-        return Math.max(0, settings.maxRolls - session.rerollsUsed());
+        int max = maxRerollsForReward(session);
+        return Math.max(0, max - session.rerollsUsed());
+    }
+
+    public int maxRerollsForReward(CrateOpeningSession session) {
+        RerollSettings settings = session.crateDefinition().reroll();
+        if (!settings.useRarityGroups || settings.groups == null || settings.groups.isEmpty()) {
+            return Math.max(0, settings.maxRolls);
+        }
+        String rarity = session.rollResult().reward().rarityId();
+        if (rarity == null || rarity.isBlank()) {
+            return Math.max(0, settings.maxRolls);
+        }
+        for (var group : settings.groups) {
+            if (group.rarity != null && group.rarity.equalsIgnoreCase(rarity)) {
+                return Math.max(0, group.rerolls);
+            }
+        }
+        return Math.max(0, settings.maxRolls);
     }
 
     public boolean canReroll(Player player, CrateOpeningSession session) {
@@ -54,7 +72,14 @@ public final class RerollService {
 
     public RewardRollResult reroll(CrateOpeningSession session) {
         session.incrementRerollsUsed();
-        RewardRollResult result = rewardRollService.reroll(session.crateDefinition());
+        RerollSettings settings = session.crateDefinition().reroll();
+        String rarity = session.rollResult().reward().rarityId();
+        RewardRollResult result;
+        if (settings.useRarityGroups && rarity != null && !rarity.isBlank()) {
+            result = rewardRollService.reroll(session.crateDefinition(), rarity);
+        } else {
+            result = rewardRollService.reroll(session.crateDefinition());
+        }
         session.updateRoll(result);
         return result;
     }

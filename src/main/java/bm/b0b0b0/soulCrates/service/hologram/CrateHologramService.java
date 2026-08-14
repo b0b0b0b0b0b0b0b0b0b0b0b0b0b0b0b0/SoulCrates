@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
@@ -107,22 +108,69 @@ public final class CrateHologramService {
 
     private void spawnVanilla(String locationKey, Location location, CrateDefinition crate) {
         List<Entity> spawned = new ArrayList<>();
-        double yOffset = settings.offsetY;
         List<String> lines = settings.lines == null ? List.of() : settings.lines;
         for (int index = 0; index < lines.size(); index++) {
             String line = lines.get(index).replace("{crate}", crate.displayName()).replace("{crate_id}", crate.id());
-            Location anchor = location.clone().add(0.5, yOffset - index * 0.25, 0.5);
+            Location anchor = location.clone().add(
+                    0.5 + settings.offsetX,
+                    settings.offsetY - index * settings.lineSpacing,
+                    0.5 + settings.offsetZ
+            );
             TextDisplay display = location.getWorld().spawn(anchor, TextDisplay.class, entity -> {
                 entity.text(messageService.parse(line));
-                entity.setBillboard(Display.Billboard.CENTER);
-                entity.setSeeThrough(true);
-                entity.setShadowed(true);
-                entity.setDefaultBackground(false);
+                entity.setBillboard(parseBillboard(settings.billboard));
+                entity.setSeeThrough(settings.seeThrough);
+                entity.setShadowed(settings.shadowed);
+                entity.setDefaultBackground(settings.defaultBackground);
+                if (settings.defaultBackground) {
+                    entity.setBackgroundColor(parseColor(settings.backgroundColor, Color.fromARGB(0, 0, 0, 0)));
+                }
+                entity.setTextOpacity(settings.textOpacity);
+                entity.setViewRange(settings.viewRange);
+                entity.setShadowRadius(settings.shadowRadius);
+                entity.setShadowStrength(settings.shadowStrength);
                 entity.setPersistent(false);
             });
             spawned.add(display);
         }
         activeHolograms.put(locationKey, spawned);
+    }
+
+    private static Display.Billboard parseBillboard(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Display.Billboard.CENTER;
+        }
+        try {
+            return Display.Billboard.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            return Display.Billboard.CENTER;
+        }
+    }
+
+    private static Color parseColor(String raw, Color fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        String normalized = raw.trim();
+        if (normalized.startsWith("#")) {
+            normalized = normalized.substring(1);
+        }
+        if (normalized.length() != 8 && normalized.length() != 6) {
+            return fallback;
+        }
+        try {
+            if (normalized.length() == 8) {
+                return Color.fromARGB(
+                        (int) Long.parseLong(normalized.substring(0, 2), 16),
+                        (int) Long.parseLong(normalized.substring(2, 4), 16),
+                        (int) Long.parseLong(normalized.substring(4, 6), 16),
+                        (int) Long.parseLong(normalized.substring(6, 8), 16)
+                );
+            }
+            return Color.fromRGB(Integer.parseInt(normalized, 16));
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
     }
 
     private void respawnAll() {

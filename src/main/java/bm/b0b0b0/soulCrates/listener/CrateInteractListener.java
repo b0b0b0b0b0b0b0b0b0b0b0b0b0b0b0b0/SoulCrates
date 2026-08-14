@@ -4,12 +4,16 @@ import bm.b0b0b0.soulCrates.config.settings.IdleDisplaySettings;
 import bm.b0b0b0.soulCrates.service.CrateService;
 import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
 import java.util.Optional;
+import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
+import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 
 public final class CrateInteractListener implements Listener {
@@ -41,17 +45,34 @@ public final class CrateInteractListener implements Listener {
         if (block == null) {
             return;
         }
-        Optional<String> crateId = locationService.findCrateId(block.getLocation());
+        openAt(event, block.getLocation());
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
+        Entity clicked = event.getRightClicked();
+        if (!(clicked instanceof BlockDisplay)) {
+            return;
+        }
+        openAt(event, clicked.getLocation().getBlock().getLocation());
+    }
+
+    private void openAt(org.bukkit.event.player.PlayerEvent event, Location blockLocation) {
+        Optional<String> crateId = locationService.findCrateId(blockLocation);
         if (crateId.isEmpty()) {
             return;
         }
-        event.setCancelled(true);
+        if (event instanceof PlayerInteractEvent interactEvent) {
+            interactEvent.setCancelled(true);
+        } else if (event instanceof PlayerInteractEntityEvent entityEvent) {
+            entityEvent.setCancelled(true);
+        }
         if (event.getPlayer().isSneaking()) {
             crateService.openPreview(event.getPlayer(), crateId.get());
             return;
         }
-        playInteractSound(block);
-        crateService.beginOpen(event.getPlayer(), crateId.get(), block.getLocation());
+        playInteractSound(blockLocation.getBlock());
+        crateService.beginOpen(event.getPlayer(), crateId.get(), blockLocation);
     }
 
     private void playInteractSound(Block block) {

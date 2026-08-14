@@ -147,12 +147,12 @@ public final class MessageService {
     }
 
     public Component component(UUID playerId, String key, TagResolver... resolvers) {
-        String template = raw(playerId, key);
+        String template = normalizePlaceholderSyntax(raw(playerId, key));
         return miniMessage.deserialize(template, resolvers);
     }
 
     public Component parse(String template) {
-        return miniMessage.deserialize(template == null ? "" : template);
+        return miniMessage.deserialize(normalizePlaceholderSyntax(template == null ? "" : template));
     }
 
     public void send(UUID playerId, String key, TagResolver... resolvers) {
@@ -182,5 +182,30 @@ public final class MessageService {
 
     public TagResolver placeholder(String name, String value) {
         return Placeholder.parsed(name, value == null ? "" : value);
+    }
+
+    static String normalizePlaceholderSyntax(String template) {
+        if (template == null || template.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(template.length());
+        int index = 0;
+        while (index < template.length()) {
+            char current = template.charAt(index);
+            if (current == '{') {
+                int end = template.indexOf('}', index + 1);
+                if (end > index + 1) {
+                    String name = template.substring(index + 1, end);
+                    if (name.matches("[A-Za-z0-9_]+")) {
+                        builder.append('<').append(name).append('>');
+                        index = end + 1;
+                        continue;
+                    }
+                }
+            }
+            builder.append(current);
+            index++;
+        }
+        return builder.toString();
     }
 }

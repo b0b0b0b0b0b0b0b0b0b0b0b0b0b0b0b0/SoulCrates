@@ -5,16 +5,20 @@ import bm.b0b0b0.soulCrates.animation.PhaseFactory;
 import bm.b0b0b0.soulCrates.api.event.CrateOpenFinishEvent;
 import bm.b0b0b0.soulCrates.api.event.CrateOpenStartEvent;
 import bm.b0b0b0.soulCrates.config.PluginConfig;
+import bm.b0b0b0.soulCrates.config.settings.OpenCostSettings;
 import bm.b0b0b0.soulCrates.config.settings.PremiumOpeningSettings;
 import bm.b0b0b0.soulCrates.config.settings.RerollSettings;
 import bm.b0b0b0.soulCrates.engine.DisplayComponent;
 import bm.b0b0b0.soulCrates.engine.DisplayEngineRegistry;
 import bm.b0b0b0.soulCrates.gui.CrateConfirmMenu;
 import bm.b0b0b0.soulCrates.gui.CrateRerollMenu;
+import bm.b0b0b0.soulCrates.gui.CrateSelectRewardMenu;
+import bm.b0b0b0.soulCrates.hook.HookRegistry;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.OpeningContext;
 import bm.b0b0b0.soulCrates.model.OpeningSessionState;
+import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.model.RewardRollResult;
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
 import bm.b0b0b0.soulCrates.service.admin.CrateAdminService;
@@ -27,6 +31,7 @@ import bm.b0b0b0.soulCrates.service.reward.DeliveryResult;
 import bm.b0b0b0.soulCrates.service.reward.PityService;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
 import bm.b0b0b0.soulCrates.service.reward.RewardSettlementService;
+import bm.b0b0b0.soulCrates.service.reward.WinLimitService;
 import bm.b0b0b0.soulCrates.service.reroll.RerollService;
 import bm.b0b0b0.soulCrates.session.CrateOpeningSession;
 import bm.b0b0b0.soulCrates.session.SessionRegistry;
@@ -60,6 +65,8 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
     private final RerollService rerollService;
     private final PityService pityService;
     private final RewardSettlementService rewardSettlementService;
+    private final WinLimitService winLimitService;
+    private final HookRegistry hookRegistry;
     private final OpenCooldownTracker cooldownTracker;
     private final IdleCrateDisplayService idleCrateDisplayService;
     private final CrateLocationService locationService;
@@ -82,6 +89,8 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             RerollService rerollService,
             PityService pityService,
             RewardSettlementService rewardSettlementService,
+            WinLimitService winLimitService,
+            HookRegistry hookRegistry,
             OpenCooldownTracker cooldownTracker,
             IdleCrateDisplayService idleCrateDisplayService,
             CrateLocationService locationService,
@@ -101,6 +110,8 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         this.rerollService = rerollService;
         this.pityService = pityService;
         this.rewardSettlementService = rewardSettlementService;
+        this.winLimitService = winLimitService;
+        this.hookRegistry = hookRegistry;
         this.cooldownTracker = cooldownTracker;
         this.idleCrateDisplayService = idleCrateDisplayService;
         this.locationService = locationService;
@@ -192,7 +203,27 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
     @Override
     public void proceedOpenFlow(Player player, CrateDefinition crate, Location location, int amount) {
         if (amount > 1) {
+            if (isSelectMode(crate)) {
+                messageService.send(player.getUniqueId(), "select-multi-disabled");
+                return;
+            }
             startMultiOpen(player, crate, location, amount);
+            return;
+        }
+        if (isSelectMode(crate)) {
+            if (crate.opening().confirmEnabled) {
+                CrateConfirmMenu menu = new CrateConfirmMenu(
+                        player.getUniqueId(),
+                        messageService,
+                        pluginConfig.guiConfirmSettings(),
+                        crate,
+                        target -> openSelectMenu(target, crate, location),
+                        null
+                );
+                PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));
+                return;
+            }
+            openSelectMenu(player, crate, location);
             return;
         }
         if (crate.opening().confirmEnabled) {
@@ -232,6 +263,71 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         sessionRegistry.unregister(session);
     }
 
+    public void openSelectMenu(Player player, CrateDefinition crate, Location location) {
+        if (sessionRegistry.isBusy(player.getUniqueId())) {
+            messageService.send(player.getUniqueId(), "open-already");
+            return;
+        }
+        if (!cooldownTracker.check(player, crate)) {
+            return;
+        }
+        CrateSelectRewardMenu menu = new CrateSelectRewardMenu(
+                player.getUniqueId(),
+                messageService,
+                pluginConfig.guiSelectSettings(),
+                crate,
+                rewardRollService,
+                winLimitService,
+                keyService,
+                location,
+                (target, reward) -> redeemSelectedReward(target, crate, location, reward),
+                null
+        );
+        PluginSchedulers.run(plugin, player, () -> player.openInventory(menu.getInventory()));
+    }
+
+    private void redeemSelectedReward(Player player, CrateDefinition crate, Location location, RewardDefinition reward) {
+        if (sessionRegistry.isBusy(player.getUniqueId())) {
+            messageService.send(player.getUniqueId(), "open-already");
+            return;
+        }
+        int keysRequired = reward.requiredKeys(crate.opening().keysRequired);
+        winLimitService.check(player, crate, reward).thenCompose(check -> {
+            if (!check.allowed()) {
+                PluginSchedulers.run(plugin, player, () -> winLimitService.sendBlockedMessage(player, check));
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
+            return OpenCostHelper.consumeAccess(
+                    player,
+                    crate,
+                    keysRequired,
+                    keyService,
+                    hookRegistry,
+                    messageService
+            ).thenCompose(consumed -> {
+                if (!consumed) {
+                    PluginSchedulers.run(plugin, player, () -> {
+                        if (crate.opening().requireKey || keysRequired > 0) {
+                            messageService.send(player.getUniqueId(), "open-no-keys", messageService.placeholder("crate", crate.displayName()));
+                        } else {
+                            messageService.send(player.getUniqueId(), "open-no-money");
+                        }
+                    });
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
+                }
+                return winLimitService.resolveReward(player, crate, reward);
+            });
+        }).thenAccept(resolved -> {
+            if (resolved == null) {
+                return;
+            }
+            PluginSchedulers.run(plugin, player, () -> {
+                cooldownTracker.apply(player, crate);
+                launchSession(player, crate, location, new RewardRollResult(resolved, false));
+            });
+        });
+    }
+
     private void startMultiOpen(Player player, CrateDefinition crate, Location location, int amount) {
         PremiumOpeningSettings premium = pluginConfig.cratesSettings().premiumOpening;
         if (!player.hasPermission(premium.multiOpenPermission)) {
@@ -251,9 +347,14 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         }
         int keysPerOpen = crate.opening().requireKey ? Math.max(1, crate.opening().keysRequired) : 0;
         int totalKeysNeeded = keysPerOpen * amount;
-        if (totalKeysNeeded > 0 && keyCountResolver.totalKeys(player, crate.id()) < totalKeysNeeded) {
-            messageService.send(player.getUniqueId(), "open-no-keys", messageService.placeholder("crate", crate.displayName()));
-            return;
+        OpenCostSettings openCost = crate.opening().openCost;
+        boolean canPay = openCost != null && openCost.enabled && openCost.vaultPrice > 0.0;
+        if (totalKeysNeeded > 0) {
+            int owned = keyCountResolver.totalKeys(player, crate.id());
+            if (owned < totalKeysNeeded && !canPay) {
+                messageService.send(player.getUniqueId(), "open-no-keys", messageService.placeholder("crate", crate.displayName()));
+                return;
+            }
         }
         if (!sessionRegistry.tryBeginBulk(player.getUniqueId())) {
             messageService.send(player.getUniqueId(), "open-already");
@@ -343,21 +444,30 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         if (!cooldownTracker.check(player, crate)) {
             return;
         }
-        if (crate.opening().requireKey) {
-            int required = Math.max(1, crate.opening().keysRequired);
-            if (keyCountResolver.totalKeys(player, crate.id()) < required) {
-                messageService.send(player.getUniqueId(), "open-no-keys", messageService.placeholder("crate", crate.displayName()));
-                return;
-            }
-            keyService.consumeForOpen(player, crate, required).thenAccept(consumed ->
-                    PluginSchedulers.run(plugin, player, () -> {
-                        if (!consumed) {
-                            messageService.send(player.getUniqueId(), "open-no-keys", messageService.placeholder("crate", crate.displayName()));
-                            return;
-                        }
-                        continueOpeningSession(player, crate, location);
-                    })
-            );
+        if (isSelectMode(crate)) {
+            openSelectMenu(player, crate, location);
+            return;
+        }
+        int required = crate.opening().requireKey ? Math.max(1, crate.opening().keysRequired) : 0;
+        if (required > 0 || (crate.opening().openCost != null && crate.opening().openCost.enabled)) {
+            OpenCostHelper.consumeAccess(
+                    player,
+                    crate,
+                    Math.max(1, required),
+                    keyService,
+                    hookRegistry,
+                    messageService
+            ).thenAccept(consumed -> PluginSchedulers.run(plugin, player, () -> {
+                if (!consumed) {
+                    if (crate.opening().requireKey) {
+                        messageService.send(player.getUniqueId(), "open-no-keys", messageService.placeholder("crate", crate.displayName()));
+                    } else {
+                        messageService.send(player.getUniqueId(), "open-no-money");
+                    }
+                    return;
+                }
+                continueOpeningSession(player, crate, location);
+            }));
             return;
         }
         continueOpeningSession(player, crate, location);
@@ -515,6 +625,11 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                     );
                 })
         );
+    }
+
+    private static boolean isSelectMode(CrateDefinition crate) {
+        return crate.opening().rewardsMode != null
+                && "SELECT".equalsIgnoreCase(crate.opening().rewardsMode.trim());
     }
 
     private String resolveGuaranteedRarity(CrateDefinition crate) {

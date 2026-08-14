@@ -40,4 +40,25 @@ public final class RerollSettings extends YamlSerializable {
             @CommentValue("Skip reroll GUI during bulk / multi open."),
     })
     public boolean skipOnMultiOpen = true;
+
+    @Comment({
+            @CommentValue("Use per-rarity reroll caps from groups instead of flat maxRolls."),
+    })
+    public boolean useRarityGroups = false;
+
+    @net.elytrium.serializer.annotations.NewLine
+    public java.util.List<RerollGroupSettings> groups = defaultGroups();
+
+    private static java.util.List<RerollGroupSettings> defaultGroups() {
+        RerollGroupSettings common = new RerollGroupSettings();
+        common.rarity = "common";
+        common.rerolls = 3;
+        RerollGroupSettings rare = new RerollGroupSettings();
+        rare.rarity = "rare";
+        rare.rerolls = 5;
+        RerollGroupSettings legendary = new RerollGroupSettings();
+        legendary.rarity = "legendary";
+        legendary.rerolls = 10;
+        return java.util.List.of(common, rare, legendary);
+    }
 }

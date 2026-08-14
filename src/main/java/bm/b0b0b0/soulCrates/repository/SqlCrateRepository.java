@@ -8,6 +8,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import bm.b0b0b0.soulCrates.model.PendingClaim;
+import bm.b0b0b0.soulCrates.model.RewardWinStats;
 import bm.b0b0b0.soulCrates.model.WinnerEntry;
 import bm.b0b0b0.soulCrates.util.RewardSnapshotCodec;
 import java.util.ArrayList;
@@ -138,6 +139,25 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
                     won_at INTEGER NOT NULL
                 )
                 """);
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS soulcrates_reward_player_wins (
+                    player_uuid TEXT NOT NULL,
+                    crate_id TEXT NOT NULL,
+                    reward_id TEXT NOT NULL,
+                    wins INTEGER NOT NULL DEFAULT 0,
+                    last_win_at INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (player_uuid, crate_id, reward_id)
+                )
+                """);
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS soulcrates_reward_global_wins (
+                    crate_id TEXT NOT NULL,
+                    reward_id TEXT NOT NULL,
+                    wins INTEGER NOT NULL DEFAULT 0,
+                    last_win_at INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (crate_id, reward_id)
+                )
+                """);
     }
 
     private void migrateMysql(Statement statement) throws SQLException {
@@ -210,6 +230,25 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
                     reward_display VARCHAR(256) NOT NULL,
                     won_at BIGINT NOT NULL,
                     INDEX idx_winner_crate (crate_id, won_at)
+                )
+                """);
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS soulcrates_reward_player_wins (
+                    player_uuid VARCHAR(36) NOT NULL,
+                    crate_id VARCHAR(64) NOT NULL,
+                    reward_id VARCHAR(128) NOT NULL,
+                    wins INT NOT NULL DEFAULT 0,
+                    last_win_at BIGINT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (player_uuid, crate_id, reward_id)
+                )
+                """);
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS soulcrates_reward_global_wins (
+                    crate_id VARCHAR(64) NOT NULL,
+                    reward_id VARCHAR(128) NOT NULL,
+                    wins INT NOT NULL DEFAULT 0,
+                    last_win_at BIGINT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (crate_id, reward_id)
                 )
                 """);
     }
@@ -654,6 +693,81 @@ public final class SqlCrateRepository implements CrateRepository, AutoCloseable 
                 logger.warning("Failed to load counters from " + table + ": " + exception.getMessage());
             }
             return values;
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<RewardWinStats> loadPlayerRewardWins(UUID playerId, String crateId, String rewardId) {
+        return loadRewardWinStats(
+                "SELECT wins, last_win_at FROM soulcrates_reward_player_wins WHERE player_uuid = ? AND crate_id = ? AND reward_id = ?",
+                playerId.toString(),
+                crateId.toLowerCase(),
+                rewardId.toLowerCase()
+        );
+    }
+
+    @Override
+    public CompletableFuture<RewardWinStats> loadGlobalRewardWins(String crateId, String rewardId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(
+                         "SELECT wins, last_win_at FROM soulcrates_reward_global_wins WHERE crate_id = ? AND reward_id = ?")) {
+                statement.setString(1, crateId.toLowerCase());
+                statement.setString(2, rewardId.toLowerCase());
+                try (var resultSet = statement.executeQuery()) {
+                    if (resultSet.next()) {
+                        return new RewardWinStats(resultSet.getInt("wins"), resultSet.getLong("last_win_at"));
+                    }
+                }
+            } catch (SQLException exception) {
+                logger.warning("Failed to load global reward wins: " + exception.getMessage());
+            }
+            return RewardWinStats.empty();
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Void> recordRewardWin(UUID playerId, String crateId, String rewardId) {
+        return CompletableFuture.runAsync(() -> {
+            long now = System.currentTimeMillis();
+            String normalizedCrate = crateId.toLowerCase();
+            String normalizedReward = rewardId.toLowerCase();
+            try (Connection connection = dataSource.getConnection()) {
+                try (var playerStatement = connection.prepareStatement(dialect.upsertIncrementPlayerRewardWin())) {
+                    playerStatement.setString(1, playerId.toString());
+                    playerStatement.setString(2, normalizedCrate);
+                    playerStatement.setString(3, normalizedReward);
+                    playerStatement.setLong(4, now);
+                    playerStatement.executeUpdate();
+                }
+                try (var globalStatement = connection.prepareStatement(dialect.upsertIncrementGlobalRewardWin())) {
+                    globalStatement.setString(1, normalizedCrate);
+                    globalStatement.setString(2, normalizedReward);
+                    globalStatement.setLong(3, now);
+                    globalStatement.executeUpdate();
+                }
+            } catch (SQLException exception) {
+                logger.warning("Failed to record reward win: " + exception.getMessage());
+            }
+        }, executor);
+    }
+
+    private CompletableFuture<RewardWinStats> loadRewardWinStats(String sql, String... params) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement(sql)) {
+                for (int index = 0; index < params.length; index++) {
+                    statement.setString(index + 1, params[index]);
+                }
+                try (var resultSet = statement.executeQuery()) {
+                    if (resultSet.next()) {
+                        return new RewardWinStats(resultSet.getInt("wins"), resultSet.getLong("last_win_at"));
+                    }
+                }
+            } catch (SQLException exception) {
+                logger.warning("Failed to load reward win stats: " + exception.getMessage());
+            }
+            return RewardWinStats.empty();
         }, executor);
     }
 

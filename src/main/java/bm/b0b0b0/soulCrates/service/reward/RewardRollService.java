@@ -17,26 +17,30 @@ public final class RewardRollService {
     }
 
     public RewardRollResult roll(CrateDefinition crateDefinition, int pityCounter, boolean forcePity, String guaranteedRarityId) {
+        List<RewardDefinition> pool = enabledRewards(crateDefinition.rewards());
+        if (pool.isEmpty()) {
+            throw new IllegalStateException("Crate has no enabled rewards configured");
+        }
         if (forcePity) {
             Optional<RewardDefinition> pityReward = findReward(crateDefinition, crateDefinition.pity().rewardId);
-            if (pityReward.isPresent()) {
+            if (pityReward.isPresent() && pityReward.get().enabled()) {
                 return new RewardRollResult(pityReward.get(), true);
             }
         }
         String normalizedRarity = normalizeRarity(guaranteedRarityId);
         if (normalizedRarity != null) {
-            RewardDefinition reward = weightedRandom(filterByRarity(crateDefinition.rewards(), normalizedRarity));
+            RewardDefinition reward = weightedRandom(filterByRarity(pool, normalizedRarity));
             return new RewardRollResult(reward, false);
         }
         if (crateDefinition.rarities() != null && !crateDefinition.rarities().isEmpty()) {
             RarityTierSettings tier = weightedRarity(crateDefinition.rarities());
-            List<RewardDefinition> pool = filterByRarity(crateDefinition.rewards(), tier.id.toLowerCase(Locale.ROOT));
-            if (pool.isEmpty()) {
-                pool = crateDefinition.rewards();
+            List<RewardDefinition> rarityPool = filterByRarity(pool, tier.id.toLowerCase(Locale.ROOT));
+            if (rarityPool.isEmpty()) {
+                rarityPool = pool;
             }
-            return new RewardRollResult(weightedRandom(pool), false);
+            return new RewardRollResult(weightedRandom(rarityPool), false);
         }
-        RewardDefinition reward = weightedRandom(crateDefinition.rewards());
+        RewardDefinition reward = weightedRandom(pool);
         return new RewardRollResult(reward, false);
     }
 
@@ -75,7 +79,7 @@ public final class RewardRollService {
         }
         String normalized = rewardId.toLowerCase(Locale.ROOT);
         for (RewardDefinition reward : crateDefinition.rewards()) {
-            if (reward.id().equals(normalized)) {
+            if (reward.id().equals(normalized) && reward.enabled()) {
                 return Optional.of(reward);
             }
         }
@@ -175,6 +179,16 @@ public final class RewardRollService {
             }
         }
         return rewards.get(rewards.size() - 1);
+    }
+
+    private static List<RewardDefinition> enabledRewards(List<RewardDefinition> rewards) {
+        List<RewardDefinition> enabled = new ArrayList<>();
+        for (RewardDefinition reward : rewards) {
+            if (reward.enabled()) {
+                enabled.add(reward);
+            }
+        }
+        return enabled;
     }
 
     private static String normalizeRarity(String guaranteedRarityId) {

@@ -23,6 +23,13 @@ public final class CrateDefinitionSettings extends YamlSerializable {
     public AnimationSettings animations = new AnimationSettings();
 
     @NewLine
+    @Comment({@CommentValue("Per-crate idle particle effects (Phoenix idle-effects). Max 12 recommended.")})
+    public java.util.List<IdleEffectSettings> idleEffects = defaultIdleEffects();
+
+    @NewLine
+    public AnimationDisplaySettings animationDisplay = new AnimationDisplaySettings();
+
+    @NewLine
     public OpeningSettings opening = new OpeningSettings();
 
     @NewLine
@@ -93,5 +100,30 @@ public final class CrateDefinitionSettings extends YamlSerializable {
         rewards.add(rare);
         rewards.add(legendary);
         return rewards;
+    }
+
+    private static java.util.List<IdleEffectSettings> defaultIdleEffects() {
+        IdleEffectSettings redstone = new IdleEffectSettings();
+        redstone.pattern = "DEFAULT";
+        redstone.particle = "REDSTONE";
+        redstone.color = "#ff0000";
+        redstone.spread = 1.0;
+        redstone.velocity = 0.1;
+        redstone.amount = 2;
+        IdleEffectSettings flame = new IdleEffectSettings();
+        flame.pattern = "DEFAULT";
+        flame.particle = "FLAME";
+        flame.color = "#ffffff";
+        flame.spread = 2.0;
+        flame.velocity = 0.1;
+        flame.amount = 2;
+        IdleEffectSettings smoke = new IdleEffectSettings();
+        smoke.pattern = "STAR";
+        smoke.particle = "SMOKE";
+        smoke.color = "#ffffff";
+        smoke.spread = 0.0;
+        smoke.velocity = 0.1;
+        smoke.amount = 2;
+        return java.util.List.of(redstone, flame, smoke);
     }
 }

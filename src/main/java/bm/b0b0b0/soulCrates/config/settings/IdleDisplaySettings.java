@@ -23,6 +23,16 @@ public final class IdleDisplaySettings extends YamlSerializable {
     public int particleCount = 3;
 
     @Comment({
+            @CommentValue("Tick interval for per-crate idle effect patterns."),
+    })
+    public int idleEffectTickInterval = 2;
+
+    @Comment({
+            @CommentValue("When a bound crate defines idleEffects, skip global ambient particles for it."),
+    })
+    public boolean preferPerCrateIdleEffects = true;
+
+    @Comment({
             @CommentValue("Play sound when a player interacts with a bound crate."),
     })
     public boolean interactSound = true;

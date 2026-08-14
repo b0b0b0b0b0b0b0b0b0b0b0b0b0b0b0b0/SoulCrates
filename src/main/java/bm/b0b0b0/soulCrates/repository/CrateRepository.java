@@ -1,6 +1,7 @@
 package bm.b0b0b0.soulCrates.repository;
 
 import bm.b0b0b0.soulCrates.model.PendingClaim;
+import bm.b0b0b0.soulCrates.model.RewardWinStats;
 import bm.b0b0b0.soulCrates.model.WinnerEntry;
 import java.util.List;
 import java.util.Map;
@@ -57,4 +58,10 @@ public interface CrateRepository {
     CompletableFuture<Void> recordWinner(String crateId, UUID playerId, String playerName, String rewardId, String rewardDisplay, long wonAt, int maxHistory);
 
     CompletableFuture<List<WinnerEntry>> loadWinnerHistory(String crateId, int limit);
+
+    CompletableFuture<RewardWinStats> loadPlayerRewardWins(UUID playerId, String crateId, String rewardId);
+
+    CompletableFuture<RewardWinStats> loadGlobalRewardWins(String crateId, String rewardId);
+
+    CompletableFuture<Void> recordRewardWin(UUID playerId, String crateId, String rewardId);
 }

@@ -2,284 +2,178 @@
 
 > [English version](docs/en/README.md)
 
-**Кейсы без дюпов: Folia, анимация уровня premium, pity, reroll, сеть MySQL+Redis — один JAR, без shade.**
+Кейсы для Paper **1.21+** / **Folia**: ключи, pity, reroll, SELECT-режим, idle-эффекты, MySQL+Redis для сети.
 
-SoulCrates — плагин кейсов для Paper **1.21+** и **Folia**, когда открытие должно быть красивым, честным по весам и безопасным на region-потоках и прокси.
+---
 
-Один JAR: зависимости через Paper `libraries`, не shade. Меньше конфликтов с другими плагинами и проще обновлять.
+## Быстрый старт
 
-## Зачем админу
+1. Положи JAR в `plugins/`, перезапусти сервер.
+2. Плагин сам создаст `plugins/SoulCrates/` и кейс **`default`**.
+3. В игре (нужен OP или права ниже):
 
-**Folia first-class** — region-aware потоки, без `BukkitScheduler` на hot path. Для сети на Folia это базовый контракт, не опция.
+```
+/sc setcrate default
+/sc givekey <ник> default 10
+```
 
-**Несколько типов кейсов** — `crates/<id>.yml`: свои награды, ключи, pity, reroll, анимация, движок отображения. Не копипаст конфигов и не зоопарк плагинов.
+4. Смотри на блок → **ПКМ** открыть, **Shift+ПКМ** preview.  
+   Или: `/sc open default`
 
-**Мультисервер** — **MySQL** + **Redis pub/sub**: виртуальные ключи и pity-кэш синхронизируются между инстансами. Истина в SQL; Redis — зеркало и инвалидация, не «кто последний записал файл».
+Готово — один рабочий кейс на блоке.
 
-**Анти-дюп** — сессия открытия с lock по игроку, bulk-open под одним lock, consume ключей до старта анимации. GUI только через custom `InventoryHolder`, не по title.
+---
 
-**Игрокам — нормальный опыт:** preview, confirm, CSGO-спиннер, reroll с Vault-оплатой, multi-open x5/x10, магазин ключей. Сообщения — MiniMessage, HEX, градиенты; тексты в `lang/messages_*.yml`.
+## Новый кейс
 
-**Мир и NPC:** привязка кейса к блоку (`/sc setcrate`), idle-модели/дисплеи, голограммы (TextDisplay / DecentHolograms), Citizens NPC (`/sc setnpc`). Shift+RMB — preview, RMB — открытие.
+1. Скопируй `plugins/SoulCrates/crates/default.yml` → `donate.yml`
+2. Поменяй `id: donate` (должен совпадать с именем файла) и `displayName`
+3. `/sc reload`
+4. `/sc setcrate donate` + `/sc givekey <ник> donate 10`
 
-**Операционка:** in-game редактор наград, `/sc stats`, `/sc locations`, broadcast редких дропов, PlaceholderAPI, API-события фаз. `/sc reload` — конфиг, lang, GUI yml, кейсы.
+Редактор наград в игре: `/sc editor` (только для уже существующих кейсов).
 
-**Для кого:** Paper/Folia-сеть с донат/ивент кейсами, прокси с общей БД, когда важнее анти-дюп и синхрон ключей, чем «ещё одна кнопка в GUI».
+---
 
-## Сеть и хранение (кратко)
+## Что где лежит
 
-| Режим | Назначение |
-|--------|------------|
-| `SQLITE` | один сервер, быстрый старт |
-| `MYSQL` | персистентность; **основа для прокси** |
-| Redis + pub/sub | зеркало virtual keys + pity между инстансами |
+| Путь | Зачем |
+|------|--------|
+| `config.yml` | БД, Redis, голограммы, premium-права |
+| `crates/<id>.yml` | Кейс: награды, ключи, анимация, opening |
+| `shop.yml` + `gui/shop.yml` | Магазин ключей (`/sc shop`) |
+| `gui/*.yml` | Слоты меню (preview, select, reroll…) |
+| `lang/messages_*.yml` | Тексты игрокам (MiniMessage) |
 
-На прокси: **MYSQL + `redis.enabled: true`**. Канал по умолчанию — `soulcrates:sync`. Публикация при записи ключей/pity; подписка обновляет локальный кэш без echo своего сервера.
+После правки YAML: **`/sc reload`**.
 
-## Что умеет (полный список)
+---
 
-### Платформа
-
-- Paper **1.21+** и **Folia** (`folia-supported: true`), `PluginSchedulers` на всех мутациях мира/инвентаря.
-- Один JAR, зависимости через Paper **`libraries`** (Elytrium Serializer, HikariCP, MySQL/SQLite, Jedis, Gson) — **не shade**.
-- Async bootstrap БД: миграции и preload не блокируют region/global tick.
-- Typed config (Elytrium): дефолты в Java, fresh install работает без ручного дописывания YAML.
-
-### Кейсы и награды
-
-- Один YAML на тип: `plugins/SoulCrates/crates/<id>.yml`.
-- Пул наград: **weight**, preview-иконка, `grants` (`MATERIAL:amount`, `vault:100`), console `commands` с `{player}`, `{crate}`, `{reward}`.
-- **Pity:** счётчик opens без pity-награды → гарантированный `rewardId`.
-- **Broadcast:** `broadcast: true` на награде → сообщение всему серверу при claim.
-- Per-crate: cooldown, permission на открытие, preview/confirm, multi-open.
-
-### Ключи
-
-- **Виртуальные** — в БД, кэш в памяти, `/sc givekey`, PlaceholderAPI `%soulcrates_keys_<crate>%`.
-- **Физические** — предмет с PDC, custom model data, consume из инвентаря при открытии.
-- **Магазин** — `/sc shop`, `shop.yml` + `gui/shop.yml`: Vault и/или item-cost за пакеты ключей.
-
-### Открытие и анимация
-
-- Pipeline из 3 фаз: **key insert → CSGO spinner → firework reveal** (типы и длительность в `animations` кейса).
-- **Premium opening** (`config.yml` → `premiumOpening`):
-  - `soulcrates.open.skip` — пропуск анимации, reroll по правилам кейса;
-  - `soulcrates.open.instant` — мгновенно, без display;
-  - `soulcrates.open.multi` — `/sc open <crate> <amount>`, кнопки x5/x10 в preview.
-- **Reroll** — GUI после анимации: free/paid rolls, Vault cost; skip per-crate (`skipOnInstantOpen`, `skipOnSkipAnimation`, `skipOnMultiOpen`) + глобальные флаги.
-- **Bulk open** — последовательные pity-rolls, summary в чат, без reroll-меню.
-- API-события: `CrateOpenStartEvent`, `CrateOpenPhaseStartEvent`, `CrateOpenPhaseEndEvent`, `CrateOpenFinishEvent`.
-
-### Отображение в мире
-
-- **Движки:** `VANILLA_BLOCK`, `VANILLA_DISPLAY`, **ModelEngine** (`engine.type`, `modelId`, idle/close анимации).
-- **Idle display** — модель/дисплей на привязанном блоке, ambient-частицы, respawn при load chunk.
-- **Голограммы** — `idleDisplay.hologram`: VANILLA TextDisplay, **DecentHolograms** (reflection), задел под FancyHolograms; плейсхолдеры `{crate}`, `{crate_id}` в строках.
-- **Привязка блока** — `/sc setcrate <crate>`, `/sc setcrate remove`; interact sound из config.
-
-### NPC и интеграции
-
-- **Citizens** — `/sc setnpc <crate>`, `/sc setnpc remove`; клик → open, Shift → preview.
-- **Vault** — экономика reroll и key shop.
-- **PlaceholderAPI** — `%soulcrates_*%` (см. ниже).
-- **ModelEngine**, **DecentHolograms**, **Citizens** — softdepend, reflection где возможно.
-
-### Админка и данные
-
-- **`/sc editor`** — список кейсов, правка в GUI (награды: weight, broadcast, pity, grant from hand).
-- **`/sc givekey`**, **`/sc keys`**, **`/sc stats [player]`**, **`/sc locations`**.
-- **`/sc reload`** — config, lang, gui, crates, idle/hologram respawn.
-- SQL: virtual keys, pity, opens, last reward, locations, npc bindings.
-
-## Структура конфигов
-
-После первого старта в `plugins/SoulCrates/`:
-
-| Путь | Содержимое |
-|------|------------|
-| `config.yml` | БД, Redis, session timeout, idle display, broadcast, premium opening, shop toggle, aliases |
-| `crates/*.yml` | Определения кейсов (engine, animations, opening, keys, reroll, pity, rewards) |
-| `shop.yml` | Позиции магазина ключей (crate, amount, vault/item price) |
-| `gui/*.yml` | Слоты и материалы GUI (preview, confirm, spinner, reroll, editor, shop) |
-| `lang/messages_*.yml` | MiniMessage-тексты (ru + en в JAR) |
-| `data/crates.db` | SQLite при `database.mode: SQLITE` |
-
-### `config.yml` — главное
+## `config.yml` — минимум
 
 ```yaml
 defaultCrateId: default
-cratesDirectory: crates
-sessionTimeoutSeconds: 120
 
 database:
-  mode: SQLITE          # или MYSQL
-  sqliteFile: data/crates.db
-  mysqlHost: 127.0.0.1
-  poolSize: 4
+  mode: SQLITE          # MYSQL — для прокси/сети
 
 redis:
-  enabled: false        # true на прокси с MYSQL
-  host: 127.0.0.1
-  port: 6379
-  channel: soulcrates:sync
-  pubSubEnabled: true
-
-premiumOpening:
-  skipAnimationPermission: soulcrates.open.skip
-  instantOpenPermission: soulcrates.open.instant
-  multiOpenPermission: soulcrates.open.multi
-  maxMultiOpen: 10
-  instantSkipsReroll: true
-  multiOpenSkipsReroll: true
+  enabled: false        # true + MYSQL на прокси
 
 idleDisplay:
   enabled: true
-  particles: true
   hologram:
     enabled: true
-    offsetY: 2.1
-    provider: VANILLA    # DECENT_HOLOGRAMS
     lines:
       - "<gold>{crate}</gold>"
-      - "<gray>Click to open · Shift preview</gray>"
+      - "<gray>ПКМ — открыть · Shift — preview</gray>"
 ```
 
-### `crates/<id>.yml` — пример
+**Прокси:** `database.mode: MYSQL` + `redis.enabled: true`, один канал `soulcrates:sync` на всех серверах.
+
+---
+
+## `crates/<id>.yml` — скелет
 
 ```yaml
-id: default
-displayName: Default Crate
+id: donate
+displayName: "<gold>Donate</gold>"
 
 engine:
   type: VANILLA_DISPLAY
   blockMaterial: ENDER_CHEST
-  modelId: ""
-  idleAnimation: idle
 
 opening:
   requireKey: true
   previewEnabled: true
   keysRequired: 1
-  cooldownSeconds: 0
-  permission: ""
-  allowMultiOpen: true
+  rewardsMode: RANDOM       # SELECT — игрок выбирает награду в меню
+  openCost:
+    enabled: false
+    vaultPrice: 500.0
+    keysFirst: true
 
 keys:
   enabled: true
-  material: TRIPWIRE_HOOK
   virtualKeys: true
   physicalKeys: true
 
-reroll:
-  enabled: true
-  freeRolls: 1
-  maxRolls: 3
-  vaultCost: 100.0
-  skipOnInstantOpen: true
-  skipOnSkipAnimation: false
-  skipOnMultiOpen: true
+animations:
+  preset: CLASSIC           # BLAZING, KEYSTORM, CSGO_STYLE, FIREWORKS…
 
-pity:
-  enabled: true
-  threshold: 50
-  rewardId: legendary
+idleEffects:
+  - pattern: DEFAULT
+    particle: REDSTONE
+    color: "#ff0000"
+    amount: 2
 
 rewards:
   - id: common
-    weight: 70
-    displayName: Diamond Stack
-    material: DIAMOND
-    grants: ["DIAMOND:3"]
-  - id: legendary
-    weight: 5
-    displayName: Netherite Ingot
-    material: NETHERITE_INGOT
-    grants: ["NETHERITE_INGOT:1"]
-    pityEligible: true
+    weight: 80
+    displayName: "1000$"
+    material: GOLD_INGOT
+    grants: ["vault:1000"]
+  - id: rare
+    weight: 20
+    displayName: "Меч"
+    material: DIAMOND_SWORD
+    grants: ["DIAMOND_SWORD:1"]
     broadcast: true
 ```
 
-## Сообщения (`plugins/SoulCrates/lang/`)
+**grants:** `MATERIAL:кол-во`, `vault:сумма`.  
+**commands** на награде: `{player}`, `{crate}`, `{reward}`.
 
-- `prefix` — префикс строк с `{prefix}`.
-- Ключи — **MiniMessage**; ru и en поставляются из JAR, merge при добавлении новых ключей.
-- Плейсхолдеры: `{crate}`, `{reward}`, `{player}`, `{amount}`, `{npc}`, `{seconds}` и др. по ключу.
-
-## PlaceholderAPI
-
-Идентификатор — `soulcrates`, формат `%soulcrates_<параметр>%`. Регистрация автоматически при наличии PlaceholderAPI.
-
-| Плейсхолдер | Значение |
-|---|---|
-| `%soulcrates_active_session%` | `true` / `false` — игрок в сессии открытия |
-| `%soulcrates_keys_<crateId>%` | Виртуальные ключи |
-| `%soulcrates_physical_keys_<crateId>%` | Физические ключи в инвентаре (online) |
-| `%soulcrates_total_keys_<crateId>%` | Сумма virtual + physical |
-| `%soulcrates_opens_<crateId>%` | Счётчик открытий |
-| `%soulcrates_pity_<crateId>%` | Текущий pity-счётчик |
-| `%soulcrates_last_reward_<crateId>%` | Id последней выигранной награды |
+---
 
 ## Команды
 
-Алиасы: `sc`, `crates` (настраиваются в `config.yml` → `commandAliases`).
+| Команда | Кто |
+|---------|-----|
+| `/sc open [кейс] [кол-во]` | игрок |
+| `/sc preview [кейс]` | игрок |
+| `/sc shop` | игрок |
+| `/sc keys [кейс]` | игрок |
+| `/sc virtualkeys` | игрок |
+| `/sc paykey <игрок> <кейс> <кол-во>` | игрок |
+| `/sc claim` | игрок (очередь наград) |
+| `/sc stats [игрок]` | игрок / админ |
+| `/sc setcrate <кейс>` | админ (смотри на блок) |
+| `/sc setcrate remove` | админ |
+| `/sc setnpc <кейс>` | админ (Citizens) |
+| `/sc givekey <игрок> <кейс> [кол-во] [physical]` | админ |
+| `/sc editor` | админ |
+| `/sc locations` | админ |
+| `/sc reload` | админ |
 
-### Игроки
+Алиасы: `sc`, `crates`.
 
-| Команда | Действие |
-|---------|----------|
-| `/sc open [crate] [amount]` | Открыть кейс (amount при `soulcrates.open.multi`) |
-| `/sc preview [crate]` | Preview GUI |
-| `/sc shop` | Магазин ключей |
-| `/sc keys [crate]` | Показать ключи |
-| `/sc stats [player]` | Статистика opens/pity (чужие — право admin) |
-
-### Админы
-
-| Команда | Действие |
-|---------|----------|
-| `/sc editor` | In-game редактор кейсов |
-| `/sc givekey <player> <crate> [amount] [physical]` | Выдать ключи |
-| `/sc setcrate <crate>` | Привязать кейс к блоку (look 5 blocks) |
-| `/sc setcrate remove` | Снять привязку блока |
-| `/sc setnpc <crate>` | Привязать Citizens NPC (look 5 blocks) |
-| `/sc setnpc remove` | Снять привязку NPC |
-| `/sc locations` | Список привязанных блоков |
-| `/sc reload` | Перезагрузка конфигов |
+---
 
 ## Права
 
-| Право | Назначение |
-|-------|------------|
-| `soulcrates.command.use` | Базовая команда `/sc` |
-| `soulcrates.command.open` | `/sc open` |
-| `soulcrates.command.preview` | `/sc preview` |
-| `soulcrates.command.shop` | `/sc shop` |
-| `soulcrates.command.keys` | `/sc keys` |
-| `soulcrates.command.admin` | editor, setcrate, setnpc, locations |
-| `soulcrates.command.reload` | `/sc reload` |
-| `soulcrates.command.givekey` | `/sc givekey` |
-| `soulcrates.command.stats.others` | `/sc stats <player>` |
-| `soulcrates.open.skip` | Пропуск анимации |
-| `soulcrates.open.instant` | Мгновенное открытие |
-| `soulcrates.open.multi` | Multi-open и bulk-кнопки |
+| Право | Что даёт |
+|-------|----------|
+| `soulcrates.command.open` | открытие |
+| `soulcrates.command.preview` | preview |
+| `soulcrates.command.shop` | магазин |
+| `soulcrates.command.virtualkeys` | GUI ключей |
+| `soulcrates.command.paykey` | перевод вирт. ключей |
+| `soulcrates.command.admin` | setcrate, editor, setnpc |
+| `soulcrates.command.givekey` | выдача ключей |
+| `soulcrates.command.reload` | reload |
+| `soulcrates.open.multi` | `/sc open … 5` и bulk в preview |
 
-Per-crate permission — поле `opening.permission` в `crates/<id>.yml` (пусто = достаточно `soulcrates.command.open`).
+Per-crate: поле `opening.permission` в yml кейса.
 
-## API для разработчиков
+---
 
-```java
-SoulCrates plugin = (SoulCrates) Bukkit.getPluginManager().getPlugin("SoulCrates");
-SoulCratesApi api = plugin.core().api();
+## PlaceholderAPI
 
-api.isLoaded();
-api.giveVirtualKeys(playerId, "default", 5);
-api.beginOpen(player, "default", location, 1);
-api.openPreview(player, "default");
-api.pity(playerId, "default");
-```
+`%soulcrates_keys_<crateId>%`, `%soulcrates_total_keys_<crateId>%`, `%soulcrates_pity_<crateId>%`, `%soulcrates_opens_<crateId>%` и др.
 
-События в пакете `bm.b0b0b0.soulCrates.api.event` — слушайте фазы и finish для квестов/статистики.
+---
 
 ## Softdepend
 
-Vault, PlaceholderAPI, ModelEngine, ItemsAdder, **Citizens**, **DecentHolograms**, FancyHolograms — опционально; без них соответствующие фичи отключаются gracefully.
+Vault, PlaceholderAPI, Citizens, ModelEngine, DecentHolograms — опционально; без них связанные фичи просто не работают.

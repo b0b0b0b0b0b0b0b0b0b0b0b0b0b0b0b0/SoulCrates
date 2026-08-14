@@ -1,8 +1,10 @@
 package bm.b0b0b0.soulCrates.service.idle;
 
 import bm.b0b0b0.soulCrates.config.settings.IdleDisplaySettings;
+import bm.b0b0b0.soulCrates.engine.AnchorDisplayComponent;
 import bm.b0b0b0.soulCrates.engine.DisplayComponent;
 import bm.b0b0b0.soulCrates.engine.DisplayEngineRegistry;
+import bm.b0b0b0.soulCrates.engine.VanillaDisplayEngine;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
 import bm.b0b0b0.soulCrates.service.hologram.CrateHologramService;
@@ -13,7 +15,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -28,6 +29,7 @@ public final class IdleCrateDisplayService {
     private final CrateRegistry crateRegistry;
     private final CrateLocationService locationService;
     private final CrateHologramService hologramService;
+    private final IdleParticleService idleParticleService;
     private final Map<String, DisplayComponent> activeDisplays = new ConcurrentHashMap<>();
     private final Set<String> pausedKeys = ConcurrentHashMap.newKeySet();
     private ScheduledTask particleTask;
@@ -38,7 +40,8 @@ public final class IdleCrateDisplayService {
             DisplayEngineRegistry displayEngineRegistry,
             CrateRegistry crateRegistry,
             CrateLocationService locationService,
-            CrateHologramService hologramService
+            CrateHologramService hologramService,
+            IdleParticleService idleParticleService
     ) {
         this.plugin = plugin;
         this.settings = settings;
@@ -46,12 +49,16 @@ public final class IdleCrateDisplayService {
         this.crateRegistry = crateRegistry;
         this.locationService = locationService;
         this.hologramService = hologramService;
+        this.idleParticleService = idleParticleService;
     }
 
     public void applySettings(IdleDisplaySettings settings) {
         this.settings = settings;
         if (hologramService != null) {
             hologramService.applySettings(settings.hologram);
+        }
+        if (idleParticleService != null) {
+            idleParticleService.applySettings(settings);
         }
         restartParticleTask();
     }
@@ -83,13 +90,22 @@ public final class IdleCrateDisplayService {
         if (crateOptional.isEmpty()) {
             return;
         }
+        CrateDefinition crate = crateOptional.get();
         despawn(locationKey);
-        DisplayComponent component = displayEngineRegistry.createIdleComponent(crateOptional.get(), location);
-        component.create();
-        if (crateOptional.get().idleAnimation() != null && !crateOptional.get().idleAnimation().isBlank()) {
-            component.playAnimation(crateOptional.get().idleAnimation());
+        DisplayComponent component;
+        if (VanillaDisplayEngine.usesExistingBlock(crate, location)) {
+            component = new AnchorDisplayComponent(location);
+        } else {
+            component = displayEngineRegistry.createIdleComponent(crate, location);
+            component.create();
+            if (crate.idleAnimation() != null && !crate.idleAnimation().isBlank()) {
+                component.playAnimation(crate.idleAnimation());
+            }
         }
         activeDisplays.put(locationKey, component);
+        if (idleParticleService != null) {
+            idleParticleService.register(locationKey, location, crate);
+        }
         if (hologramService != null) {
             hologramService.spawn(locationKey, crateId, location);
         }
@@ -98,6 +114,9 @@ public final class IdleCrateDisplayService {
     public void despawn(String locationKey) {
         if (hologramService != null) {
             hologramService.despawn(locationKey);
+        }
+        if (idleParticleService != null) {
+            idleParticleService.unregister(locationKey);
         }
         DisplayComponent component = activeDisplays.remove(locationKey);
         if (component != null) {
@@ -110,6 +129,9 @@ public final class IdleCrateDisplayService {
             despawn(key);
         }
         activeDisplays.clear();
+        if (idleParticleService != null) {
+            idleParticleService.clear();
+        }
     }
 
     public void pause(Location location) {
@@ -163,6 +185,9 @@ public final class IdleCrateDisplayService {
         }
         despawnAll();
         pausedKeys.clear();
+        if (idleParticleService != null) {
+            idleParticleService.shutdown();
+        }
         if (hologramService != null) {
             hologramService.shutdown();
         }
@@ -177,10 +202,10 @@ public final class IdleCrateDisplayService {
             return;
         }
         int interval = Math.max(10, settings.particleIntervalTicks);
-        particleTask = PluginSchedulers.runTimer(plugin, (org.bukkit.entity.Entity) null, interval, interval, this::spawnParticles);
+        particleTask = PluginSchedulers.runTimer(plugin, (org.bukkit.entity.Entity) null, interval, interval, this::spawnGlobalParticles);
     }
 
-    private void spawnParticles() {
+    private void spawnGlobalParticles() {
         if (!settings.enabled || !settings.particles) {
             return;
         }
@@ -190,6 +215,11 @@ public final class IdleCrateDisplayService {
         }
         int count = Math.max(1, settings.particleCount);
         for (Map.Entry<String, DisplayComponent> entry : activeDisplays.entrySet()) {
+            if (settings.preferPerCrateIdleEffects
+                    && idleParticleService != null
+                    && idleParticleService.hasPerCrateEffects(entry.getKey())) {
+                continue;
+            }
             Location anchor = entry.getValue().anchor();
             if (anchor.getWorld() == null || !isChunkLoaded(anchor)) {
                 continue;

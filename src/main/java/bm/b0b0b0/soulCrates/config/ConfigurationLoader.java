@@ -10,6 +10,8 @@ import bm.b0b0b0.soulCrates.config.settings.GuiGeneralSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiPreviewSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiRerollSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiShopSettings;
+import bm.b0b0b0.soulCrates.config.settings.GuiSelectSettings;
+import bm.b0b0b0.soulCrates.config.settings.GuiVirtualKeysSettings;
 import bm.b0b0b0.soulCrates.config.settings.GuiSpinnerSettings;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import java.io.IOException;
@@ -60,6 +62,14 @@ public final class ConfigurationLoader {
                 new GuiShopSettings(),
                 dataFolderPath.resolve("gui").resolve("shop.yml")
         );
+        GuiSelectSettings guiSelectSettings = SerializedConfigReloader.reload(
+                new GuiSelectSettings(),
+                dataFolderPath.resolve("gui").resolve("select.yml")
+        );
+        GuiVirtualKeysSettings guiVirtualKeysSettings = SerializedConfigReloader.reload(
+                new GuiVirtualKeysSettings(),
+                dataFolderPath.resolve("gui").resolve("virtual_keys.yml")
+        );
         GuiClaimSettings guiClaimSettings = SerializedConfigReloader.reload(
                 new GuiClaimSettings(),
                 dataFolderPath.resolve("gui").resolve("claim.yml")
@@ -81,6 +91,8 @@ public final class ConfigurationLoader {
                 guiRerollSettings,
                 guiClaimSettings,
                 guiShopSettings,
+                guiSelectSettings,
+                guiVirtualKeysSettings,
                 crateShopSettings,
                 crateDefinitions
         );

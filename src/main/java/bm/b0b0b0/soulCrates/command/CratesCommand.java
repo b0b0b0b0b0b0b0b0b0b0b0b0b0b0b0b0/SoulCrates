@@ -18,7 +18,7 @@ import org.bukkit.entity.Player;
 public final class CratesCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> ROOT_SUBCOMMANDS = List.of(
-            "open", "preview", "claim", "editor", "reload", "givekey", "givelootbox", "setcrate", "setnpc", "keys", "stats", "locations", "shop"
+            "open", "preview", "claim", "editor", "reload", "givekey", "givelootbox", "setcrate", "setnpc", "keys", "stats", "locations", "shop", "virtualkeys", "paykey"
     );
 
     private final SoulCratesCore core;
@@ -48,6 +48,8 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
             case "keys" -> handleKeys(sender, messages, args);
             case "stats" -> handleStats(sender, messages, args);
             case "locations" -> handleLocations(sender, messages);
+            case "virtualkeys" -> handleVirtualKeys(sender, messages);
+            case "paykey" -> handlePayKey(sender, messages, args);
             default -> false;
         };
     }
@@ -61,7 +63,7 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 2) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "givekey", "givelootbox" -> onlinePlayerNames(args[1]);
+                case "givekey", "givelootbox", "paykey" -> onlinePlayerNames(args[1]);
                 case "stats" -> sender.hasPermission("soulcrates.command.stats.others")
                         ? onlinePlayerNames(args[1])
                         : List.of();
@@ -80,6 +82,7 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
         if (args.length == 3) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "givekey", "givelootbox" -> crateIds(args[2]);
+                case "paykey" -> crateIds(args[2]);
                 case "open" -> amountSuggestions(args[2]);
                 default -> List.of();
             };
@@ -88,6 +91,7 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "givekey" -> giveKeyAmountSuggestions(args[3]);
                 case "givelootbox" -> amountSuggestions(args[3]);
+                case "paykey" -> amountSuggestions(args[3]);
                 default -> List.of();
             };
         }
@@ -347,6 +351,45 @@ public final class CratesCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         core.crateService().listLocations(player);
+        return true;
+    }
+
+    private boolean handleVirtualKeys(CommandSender sender, MessageService messages) {
+        if (!CommandGuard.requirePlayer(sender, messages)) {
+            return true;
+        }
+        Player player = (Player) sender;
+        if (!CommandGuard.requirePermission(player, "soulcrates.command.virtualkeys", messages)) {
+            return true;
+        }
+        if (!CommandGuard.requireLoaded(core.crateService(), sender, messages)) {
+            return true;
+        }
+        core.crateService().openVirtualKeys(player);
+        return true;
+    }
+
+    private boolean handlePayKey(CommandSender sender, MessageService messages, String[] args) {
+        if (!CommandGuard.requirePlayer(sender, messages)) {
+            return true;
+        }
+        Player player = (Player) sender;
+        if (!CommandGuard.requirePermission(player, "soulcrates.command.paykey", messages)) {
+            return true;
+        }
+        if (!CommandGuard.requireLoaded(core.crateService(), sender, messages)) {
+            return true;
+        }
+        if (args.length < 4) {
+            return false;
+        }
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            messages.send(player.getUniqueId(), "player-not-found");
+            return true;
+        }
+        int amount = parseAmount(args[3]);
+        core.crateService().payVirtualKeys(player, target, args[2], amount);
         return true;
     }
 

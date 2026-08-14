@@ -119,6 +119,40 @@ public final class SqlDialect {
                 """;
     }
 
+    public String upsertIncrementPlayerRewardWin() {
+        if (mysql) {
+            return """
+                    INSERT INTO soulcrates_reward_player_wins (player_uuid, crate_id, reward_id, wins, last_win_at)
+                    VALUES (?, ?, ?, 1, ?)
+                    ON DUPLICATE KEY UPDATE wins = wins + 1, last_win_at = VALUES(last_win_at)
+                    """;
+        }
+        return """
+                INSERT INTO soulcrates_reward_player_wins (player_uuid, crate_id, reward_id, wins, last_win_at)
+                VALUES (?, ?, ?, 1, ?)
+                ON CONFLICT(player_uuid, crate_id, reward_id) DO UPDATE SET
+                    wins = wins + 1,
+                    last_win_at = excluded.last_win_at
+                """;
+    }
+
+    public String upsertIncrementGlobalRewardWin() {
+        if (mysql) {
+            return """
+                    INSERT INTO soulcrates_reward_global_wins (crate_id, reward_id, wins, last_win_at)
+                    VALUES (?, ?, 1, ?)
+                    ON DUPLICATE KEY UPDATE wins = wins + 1, last_win_at = VALUES(last_win_at)
+                    """;
+        }
+        return """
+                INSERT INTO soulcrates_reward_global_wins (crate_id, reward_id, wins, last_win_at)
+                VALUES (?, ?, 1, ?)
+                ON CONFLICT(crate_id, reward_id) DO UPDATE SET
+                    wins = wins + 1,
+                    last_win_at = excluded.last_win_at
+                """;
+    }
+
     public String pruneWinnerHistory() {
         if (mysql) {
             return """

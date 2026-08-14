@@ -23,6 +23,7 @@ public final class RewardSettlementService {
     private final CrateRepository repository;
     private final ClaimService claimService;
     private final LastWinnerService lastWinnerService;
+    private final WinLimitService winLimitService;
     private final Supplier<ClaimSettings> claimSettings;
 
     public RewardSettlementService(
@@ -34,6 +35,7 @@ public final class RewardSettlementService {
             CrateRepository repository,
             ClaimService claimService,
             LastWinnerService lastWinnerService,
+            WinLimitService winLimitService,
             Supplier<ClaimSettings> claimSettings
     ) {
         this.messageService = messageService;
@@ -44,10 +46,39 @@ public final class RewardSettlementService {
         this.repository = repository;
         this.claimService = claimService;
         this.lastWinnerService = lastWinnerService;
+        this.winLimitService = winLimitService;
         this.claimSettings = claimSettings;
     }
 
     public CompletableFuture<DeliveryResult> deliver(Player player, CrateDefinition crate, RewardRollResult roll) {
+        return winLimitService.resolveReward(player, crate, roll.reward()).thenCompose(resolved -> {
+            if (resolved == null) {
+                return CompletableFuture.completedFuture(DeliveryResult.failure());
+            }
+            RewardRollResult effectiveRoll = resolved.id().equals(roll.reward().id())
+                    ? roll
+                    : new RewardRollResult(resolved, roll.pityTriggered());
+            return rewardDeliveryService.deliverAsync(
+                    player,
+                    crate.id(),
+                    effectiveRoll.reward(),
+                    claimSettings.get(),
+                    claimService
+            ).thenApply(result -> {
+                if (result.isFailed()) {
+                    return result;
+                }
+                winLimitService.recordWin(player.getUniqueId(), crate.id(), effectiveRoll.reward().id());
+                return result;
+            });
+        });
+    }
+
+    public CompletableFuture<DeliveryResult> deliverWithoutWinLimitCheck(
+            Player player,
+            CrateDefinition crate,
+            RewardRollResult roll
+    ) {
         return rewardDeliveryService.deliverAsync(
                 player,
                 crate.id(),

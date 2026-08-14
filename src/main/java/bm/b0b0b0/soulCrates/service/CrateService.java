@@ -7,7 +7,9 @@ import bm.b0b0b0.soulCrates.config.settings.IdleDisplaySettings;
 import bm.b0b0b0.soulCrates.engine.DisplayEngineRegistry;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
+import bm.b0b0b0.soulCrates.hook.HookRegistry;
 import bm.b0b0b0.soulCrates.repository.CrateRepository;
+import bm.b0b0b0.soulCrates.service.reward.WinLimitService;
 import bm.b0b0b0.soulCrates.service.admin.CrateAdminService;
 import bm.b0b0b0.soulCrates.service.claim.ClaimService;
 import bm.b0b0b0.soulCrates.service.idle.IdleCrateDisplayService;
@@ -30,6 +32,7 @@ import bm.b0b0b0.soulCrates.service.shop.KeyShopService;
 import bm.b0b0b0.soulCrates.service.winner.LastWinnerService;
 import bm.b0b0b0.soulCrates.session.CrateOpeningSession;
 import bm.b0b0b0.soulCrates.session.SessionRegistry;
+import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import java.util.Optional;
 import java.util.UUID;
 import org.bukkit.Location;
@@ -56,6 +59,7 @@ public final class CrateService {
     private BroadcastService broadcastService;
     private IdleCrateDisplayService idleCrateDisplayService;
     private KeyShopService keyShopService;
+    private HookRegistry hookRegistry;
     private OpenCooldownTracker cooldownTracker;
     private CrateOpeningService openingService;
     private CrateMenuService menuService;
@@ -122,9 +126,11 @@ public final class CrateService {
             ConfigurationLoader configurationLoader,
             RewardDeliveryService rewardDeliveryService,
             DisplayEngineRegistry displayEngineRegistry,
-            PhaseFactory phaseFactory
+            PhaseFactory phaseFactory,
+            HookRegistry hookRegistry
     ) {
         this.keyService = keyService;
+        this.hookRegistry = hookRegistry;
         this.playerDataService = playerDataService;
         this.locationService = locationService;
         this.npcService = npcService;
@@ -148,6 +154,7 @@ public final class CrateService {
                 return CrateService.this.virtualKeys(playerId, crateId);
             }
         };
+        WinLimitService winLimitService = new WinLimitService(repository, messageService);
         RewardSettlementService rewardSettlementService = new RewardSettlementService(
                 messageService,
                 rewardDeliveryService,
@@ -157,6 +164,7 @@ public final class CrateService {
                 repository,
                 claimService,
                 lastWinnerService,
+                winLimitService,
                 () -> pluginConfig.cratesSettings().claim
         );
         openingService = new CrateOpeningService(
@@ -173,6 +181,8 @@ public final class CrateService {
                 rerollService,
                 pityService,
                 rewardSettlementService,
+                winLimitService,
+                hookRegistry,
                 cooldownTracker,
                 idleCrateDisplayService,
                 locationService,
@@ -188,6 +198,7 @@ public final class CrateService {
                 rewardRollService,
                 keyShopService,
                 claimService,
+                keyService,
                 openingService,
                 this::applyConfig
         );
@@ -355,6 +366,60 @@ public final class CrateService {
             return;
         }
         menuService.openClaim(player);
+    }
+
+    public void openVirtualKeys(Player player) {
+        if (!ready(player)) {
+            return;
+        }
+        menuService.openVirtualKeys(player);
+    }
+
+    public void payVirtualKeys(Player sender, Player target, String crateId, int amount) {
+        if (!isLoaded()) {
+            messageService.send(sender.getUniqueId(), "startup-not-ready");
+            return;
+        }
+        Optional<CrateDefinition> crateOptional = crateRegistry.find(crateId);
+        if (crateOptional.isEmpty()) {
+            messageService.send(sender.getUniqueId(), "crate-not-found", messageService.placeholder("crate", crateId));
+            return;
+        }
+        CrateDefinition crate = crateOptional.get();
+        if (!crate.keys().enabled || !crate.keys().virtualKeys) {
+            messageService.send(sender.getUniqueId(), "paykey-virtual-disabled");
+            return;
+        }
+        if (amount <= 0) {
+            messageService.send(sender.getUniqueId(), "paykey-invalid-amount");
+            return;
+        }
+        if (keyService.virtualKeys(sender.getUniqueId(), crateId) < amount) {
+            messageService.send(sender.getUniqueId(), "paykey-not-enough");
+            return;
+        }
+        keyService.transferVirtualKeys(sender.getUniqueId(), target.getUniqueId(), crateId, amount).thenAccept(success ->
+                PluginSchedulers.run(plugin, sender, () -> {
+                    if (!success) {
+                        messageService.send(sender.getUniqueId(), "paykey-failed");
+                        return;
+                    }
+                    messageService.send(
+                            sender.getUniqueId(),
+                            "paykey-success-sender",
+                            messageService.placeholder("amount", Integer.toString(amount)),
+                            messageService.placeholder("crate", crate.displayName()),
+                            messageService.placeholder("player", target.getName())
+                    );
+                    messageService.send(
+                            target.getUniqueId(),
+                            "paykey-success-target",
+                            messageService.placeholder("amount", Integer.toString(amount)),
+                            messageService.placeholder("crate", crate.displayName()),
+                            messageService.placeholder("player", sender.getName())
+                    );
+                })
+        );
     }
 
     public void claimAll(Player player) {
