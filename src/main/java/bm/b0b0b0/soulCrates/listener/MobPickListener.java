@@ -1,6 +1,7 @@
 package bm.b0b0b0.soulCrates.listener;
 
-import bm.b0b0b0.soulCrates.animation.ShulkerPickPhase;
+import bm.b0b0b0.soulCrates.animation.MobCirclePickPhase;
+import bm.b0b0b0.soulCrates.util.SoulCratesKeys;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -9,16 +10,25 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
 
-public final class ShulkerPickListener implements Listener {
+public final class MobPickListener implements Listener {
+
+    private final JavaPlugin plugin;
+
+    public MobPickListener(JavaPlugin plugin) {
+        this.plugin = plugin;
+    }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
-        ShulkerPickPhase.activePhase(event.getPlayer().getUniqueId()).ifPresent(phase -> {
+        MobCirclePickPhase.activePhase(event.getPlayer().getUniqueId()).ifPresent(phase -> {
             if (!phase.shouldConfinePlayer()) {
                 return;
             }
@@ -61,24 +71,34 @@ public final class ShulkerPickListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onEntityDamage(EntityDamageByEntityEvent event) {
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = false)
+    public void onMobHit(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Player player)) {
             return;
         }
-        if (tryPickEntity(player, event.getEntity())) {
-            event.setCancelled(true);
+        if (!tryPickEntity(player, event.getEntity())) {
+            return;
+        }
+        event.setCancelled(true);
+        event.setDamage(0.0);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onMobDeath(EntityDeathEvent event) {
+        if (event.getEntity().getPersistentDataContainer().has(SoulCratesKeys.mobPickSession(plugin), PersistentDataType.STRING)) {
+            event.getDrops().clear();
+            event.setDroppedExp(0);
         }
     }
 
     private static boolean tryPickLook(Player player) {
-        return ShulkerPickPhase.activePhase(player.getUniqueId())
+        return MobCirclePickPhase.activePhase(player.getUniqueId())
                 .map(phase -> phase.tryPickLook(player))
                 .orElse(false);
     }
 
     private static boolean tryPickEntity(Player player, Entity entity) {
-        return ShulkerPickPhase.activePhase(player.getUniqueId())
+        return MobCirclePickPhase.activePhase(player.getUniqueId())
                 .map(phase -> phase.tryPick(player, entity))
                 .orElse(false);
     }

@@ -18,6 +18,7 @@ import bm.b0b0b0.soulCrates.listener.CrateBlockProtectListener;
 import bm.b0b0b0.soulCrates.listener.CrateChunkListener;
 import bm.b0b0b0.soulCrates.listener.CrateInteractListener;
 import bm.b0b0b0.soulCrates.listener.LootBoxListener;
+import bm.b0b0b0.soulCrates.listener.MobPickListener;
 import bm.b0b0b0.soulCrates.listener.PhysicalCrateListener;
 import bm.b0b0b0.soulCrates.listener.ShulkerPickListener;
 import bm.b0b0b0.soulCrates.listener.NpcInteractListener;
@@ -257,6 +258,7 @@ public final class SoulCratesCore {
                     plugin
             );
             plugin.getServer().getPluginManager().registerEvents(new ShulkerPickListener(), plugin);
+            plugin.getServer().getPluginManager().registerEvents(new MobPickListener(plugin), plugin);
             plugin.getServer().getPluginManager().registerEvents(new NpcInteractListener(crateService, npcService), plugin);
             plugin.getServer().getPluginManager().registerEvents(new LootBoxListener(crateService, lootBoxService), plugin);
             plugin.getServer().getPluginManager().registerEvents(new PlayerJoinListener(plugin, playerDataService, claimService, crateRegistry), plugin);

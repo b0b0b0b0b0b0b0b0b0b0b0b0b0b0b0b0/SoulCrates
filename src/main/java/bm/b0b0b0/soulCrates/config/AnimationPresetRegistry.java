@@ -23,6 +23,7 @@ public final class AnimationPresetRegistry {
         register("ARCADE", phase("crack", 25, "#22d3ee"), phase("helix", 130, "#a855f7"), phase("firework", 50, "#34d399"));
         register("BOUNCY", phase("default", 20, "#ffffff"), phase("ball", 95, "#34d399"), phase("ball", 40, "#22c55e"));
         register("SHULKER_PICK", phase("default", 18, "#ffffff"), phase("shulker_pick", 240, "#a78bfa"), phase("none", 12, "#c084fc"));
+        register("MOB_PICK", phase("crack", 22, "#ef4444"), mobPickPhase("mob_pick", 240, "#f97316", "ALLAY", 7), phase("firework", 40, "#fbbf24"));
         register("NONE", phase("none", 1, "#ffffff"), phase("none", 1, "#ffffff"), phase("none", 1, "#ffffff"));
     }
 
@@ -100,6 +101,13 @@ public final class AnimationPresetRegistry {
         return settings;
     }
 
+    private static AnimationPhaseSettings mobPickPhase(String type, int ticks, String color, String mobEntity, int mobCount) {
+        AnimationPhaseSettings settings = phase(type, ticks, color);
+        settings.properties.mobEntity = mobEntity;
+        settings.properties.mobCount = mobCount;
+        return settings;
+    }
+
     private static AnimationSettings copy(AnimationSettings source) {
         if (source == null) {
             return null;
@@ -125,6 +133,8 @@ public final class AnimationPresetRegistry {
         copy.properties.offsetZ = source.properties.offsetZ;
         copy.properties.suspenseEnabled = source.properties.suspenseEnabled;
         copy.properties.suspenseMoments = source.properties.suspenseMoments;
+        copy.properties.mobEntity = source.properties.mobEntity;
+        copy.properties.mobCount = source.properties.mobCount;
         return copy;
     }
 }

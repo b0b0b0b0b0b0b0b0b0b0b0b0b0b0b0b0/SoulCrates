@@ -41,6 +41,8 @@ public final class ShulkerPickPhase implements PhaseRunner {
 
     private static final int POD_COUNT = 6;
     private static final double RADIUS = 3.15;
+    private static final double PLAYER_BOUND_RADIUS = 2.45;
+    private static final double PLAYER_BOUND_RADIUS_SQ = PLAYER_BOUND_RADIUS * PLAYER_BOUND_RADIUS;
     private static final float POD_SCALE = 0.82f;
     private static final float LABEL_GAP = 0.42f;
     private static final double FLOAT_BASE = 0.14;
@@ -100,6 +102,7 @@ public final class ShulkerPickPhase implements PhaseRunner {
     private Location center;
     private CrateOpeningSession session;
     private BossBar bossBar;
+    private boolean restoreCollidable = true;
     private final List<Pod> pods = new ArrayList<>();
 
     public ShulkerPickPhase(
@@ -143,6 +146,8 @@ public final class ShulkerPickPhase implements PhaseRunner {
         }
         buildPods(player, enabled, session);
         startBossBar(player);
+        restoreCollidable = player.isCollidable();
+        player.setCollidable(false);
         ACTIVE.put(player.getUniqueId(), this);
         World world = center.getWorld();
         if (world != null) {
@@ -159,6 +164,7 @@ public final class ShulkerPickPhase implements PhaseRunner {
             return;
         }
         stageTicks++;
+        confinePlayer(player);
         updatePodMotion();
         switch (stage) {
             case PICKING -> tickPicking(player);
@@ -174,6 +180,9 @@ public final class ShulkerPickPhase implements PhaseRunner {
     public void unload(Player player, CrateOpeningSession session) {
         ACTIVE.remove(player.getUniqueId());
         clearBossBar(player);
+        if (player != null && player.isOnline()) {
+            player.setCollidable(restoreCollidable);
+        }
         for (Pod pod : pods) {
             removePod(pod);
         }
@@ -278,6 +287,53 @@ public final class ShulkerPickPhase implements PhaseRunner {
 
     private static Location blockHitboxCenter(Location blockAnchor) {
         return blockAnchor.clone().add(0.0, POD_SCALE * 0.5, 0.0);
+    }
+
+    public boolean shouldConfinePlayer() {
+        return stage == Stage.PICKING || stage == Stage.WINNER_BOUNCE;
+    }
+
+    public boolean isOutsideBoundary(Location location) {
+        if (center == null || location == null || location.getWorld() == null) {
+            return false;
+        }
+        if (center.getWorld() != location.getWorld()) {
+            return true;
+        }
+        double dx = location.getX() - center.getX();
+        double dz = location.getZ() - center.getZ();
+        return dx * dx + dz * dz > PLAYER_BOUND_RADIUS_SQ;
+    }
+
+    public Location clampLocation(Location location) {
+        if (center == null || location == null) {
+            return location;
+        }
+        double dx = location.getX() - center.getX();
+        double dz = location.getZ() - center.getZ();
+        double distSq = dx * dx + dz * dz;
+        if (distSq <= PLAYER_BOUND_RADIUS_SQ) {
+            return location;
+        }
+        double dist = Math.sqrt(distSq);
+        Location clamped = location.clone();
+        clamped.setX(center.getX() + dx / dist * PLAYER_BOUND_RADIUS);
+        clamped.setZ(center.getZ() + dz / dist * PLAYER_BOUND_RADIUS);
+        return clamped;
+    }
+
+    private void confinePlayer(Player player) {
+        if (!shouldConfinePlayer() || center == null) {
+            return;
+        }
+        Location current = player.getLocation();
+        if (!isOutsideBoundary(current)) {
+            return;
+        }
+        Location clamped = clampLocation(current);
+        clamped.setYaw(current.getYaw());
+        clamped.setPitch(current.getPitch());
+        player.teleport(clamped);
     }
 
     private void tickPicking(Player player) {

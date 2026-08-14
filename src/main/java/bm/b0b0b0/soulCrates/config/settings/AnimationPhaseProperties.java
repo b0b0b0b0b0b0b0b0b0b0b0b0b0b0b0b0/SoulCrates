@@ -27,4 +27,14 @@ public final class AnimationPhaseProperties extends YamlSerializable {
             @CommentValue("Carousel only: suspense beats per open (1-3). Seeded, not chaotic."),
     })
     public int suspenseMoments = 2;
+
+    @Comment({
+            @CommentValue("Mob pick only: entity type (Bukkit EntityType name)."),
+    })
+    public String mobEntity = "ALLAY";
+
+    @Comment({
+            @CommentValue("Mob pick only: how many mobs spawn in the circle."),
+    })
+    public int mobCount = 7;
 }

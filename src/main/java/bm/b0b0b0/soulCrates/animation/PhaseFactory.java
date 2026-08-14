@@ -101,6 +101,16 @@ public final class PhaseFactory {
                     settings
             );
         }
+        if (isMobPickType(type)) {
+            return new MobCirclePickPhase(
+                    plugin,
+                    messageService,
+                    broadcastService,
+                    crateDefinition,
+                    rolledReward,
+                    settings
+            );
+        }
         return switch (type) {
             case "none" -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.NONE, settings, rolledReward);
             case "swirl" -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.SWIRL, settings, rolledReward);
@@ -144,6 +154,14 @@ public final class PhaseFactory {
                 || "display".equals(type);
     }
 
+    private static boolean isMobPickType(String type) {
+        return "mob_pick".equals(type)
+                || "mob_circle".equals(type)
+                || "kill_mob_circle".equals(type)
+                || "mystery_mobs".equals(type)
+                || "mob_roulette".equals(type);
+    }
+
     private static boolean isShulkerPickType(String type) {
         return "shulker_pick".equals(type)
                 || "shulker".equals(type)
@@ -161,7 +179,7 @@ public final class PhaseFactory {
     private static String mapModelEngineAnimation(String type) {
         return switch (type) {
             case "key_opener", "key_insert", "crack", "lightning", "fire" -> "pre-open";
-            case "csgo", "csgo_gui", "spinner", "swirl", "ball", "carousel", "shulker_pick", "shulker", "ground_pick", "mystery_shulkers" -> "open";
+            case "csgo", "csgo_gui", "spinner", "swirl", "ball", "carousel", "shulker_pick", "shulker", "ground_pick", "mystery_shulkers", "mob_pick", "mob_circle", "kill_mob_circle", "mystery_mobs", "mob_roulette" -> "open";
             case "firework", "helix", "reveal", "default" -> "display";
             case "none" -> "idle";
             default -> type;

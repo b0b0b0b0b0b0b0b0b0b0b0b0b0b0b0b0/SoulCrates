@@ -8,6 +8,7 @@ public final class SoulCratesKeys {
     public static final String KEY_ID = "key";
     public static final String CRATE_ID = "crate";
     public static final String CRATE_INSTANCE_ID = "crate_instance";
+    public static final String MOB_PICK_SESSION = "mob_pick_session";
     public static final String LOOTBOX_ID = "lootbox";
     public static final String LOOTBOX_RARITY = "lootbox_rarity";
     public static final String KEY_RARITY = "key_rarity";
@@ -25,6 +26,10 @@ public final class SoulCratesKeys {
 
     public static NamespacedKey crateInstanceId(Plugin plugin) {
         return new NamespacedKey(plugin, CRATE_INSTANCE_ID);
+    }
+
+    public static NamespacedKey mobPickSession(Plugin plugin) {
+        return new NamespacedKey(plugin, MOB_PICK_SESSION);
     }
 
     public static NamespacedKey lootBoxType(Plugin plugin) {

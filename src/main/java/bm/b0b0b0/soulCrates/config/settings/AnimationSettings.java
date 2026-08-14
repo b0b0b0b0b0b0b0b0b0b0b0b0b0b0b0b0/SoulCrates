@@ -18,6 +18,7 @@ public final class AnimationSettings extends YamlSerializable {
             @CommentValue("ARCADE — rising helix spiral particles, firework."),
             @CommentValue("BOUNCY — bouncing particle ball in world, no ring."),
             @CommentValue("SHULKER_PICK — shulker boxes on ground around player, hop pick, reveal losses."),
+            @CommentValue("MOB_PICK — mobs in a circle, hit to choose, reveal others."),
             @CommentValue("NONE — instant open."),
     })
     public String preset = "SHOWCASE";
