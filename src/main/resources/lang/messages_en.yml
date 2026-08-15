@@ -77,6 +77,8 @@ givekey-received: "<color:#34D399>You received <color:#FBBF24>{amount}</color> k
 player-not-found: "<color:#FB7185>Player not found.</color>"
 setcrate-success: "<color:#34D399>Block bound to crate <color:#FBBF24>{crate}</color>.</color>"
 setcrate-success-preset: "<color:#34D399>Block bound to <color:#FBBF24>{crate}</color>. Animation preset: <color:#A78BFA>{preset}</color>.</color>"
+setcrate-already-bound: "<color:#FB7185>This block is already bound to crate <color:#FBBF24>{crate}</color>. Remove it first with <color:#FBBF24>/sc setcrate remove</color>.</color>"
+setcrate-bind-failed: "<color:#FB7185>Failed to bind this block to a crate. Check server console for details.</color>"
 setcrate-invalid-preset: "<color:#FB7185>Unknown animation preset <color:#FBBF24>{preset}</color>. Use SHOWCASE, CSGO_STYLE, SHULKER_PICK, MOB_PICK.</color>"
 setcrate-no-block: "<color:#FB7185>Look at a block within 5 blocks.</color>"
 unsetcrate-success: "<color:#34D399>Crate binding removed.</color>"

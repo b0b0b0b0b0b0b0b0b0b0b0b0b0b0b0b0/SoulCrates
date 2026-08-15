@@ -1,7 +1,6 @@
 package bm.b0b0b0.soulCrates.gui;
 
 import bm.b0b0b0.soulCrates.config.settings.GuiPreviewSettings;
-import bm.b0b0b0.soulCrates.config.settings.PremiumOpeningSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
@@ -9,15 +8,12 @@ import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
 import bm.b0b0b0.soulCrates.util.KeyCountLabels;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -26,21 +22,18 @@ public final class CratePreviewMenu extends SoulMenu {
 
     private final MessageService messageService;
     private final GuiPreviewSettings previewSettings;
-    private final PremiumOpeningSettings premiumOpeningSettings;
     private final CrateDefinition crateDefinition;
     private final RewardRollService rewardRollService;
     private final KeyService keyService;
     private final boolean boundStaticCrate;
     private final BiConsumer<Player, Integer> openAction;
     private final Runnable backAction;
-    private final Map<Integer, Integer> multiOpenSlots = new HashMap<>();
     private int page;
 
     public CratePreviewMenu(
             UUID viewerId,
             MessageService messageService,
             GuiPreviewSettings previewSettings,
-            PremiumOpeningSettings premiumOpeningSettings,
             CrateDefinition crateDefinition,
             RewardRollService rewardRollService,
             KeyService keyService,
@@ -55,7 +48,6 @@ public final class CratePreviewMenu extends SoulMenu {
         );
         this.messageService = messageService;
         this.previewSettings = previewSettings;
-        this.premiumOpeningSettings = premiumOpeningSettings;
         this.crateDefinition = crateDefinition;
         this.rewardRollService = rewardRollService;
         this.keyService = keyService;
@@ -68,7 +60,6 @@ public final class CratePreviewMenu extends SoulMenu {
     @Override
     public void refresh() {
         getInventory().clear();
-        multiOpenSlots.clear();
         Player player = Bukkit.getPlayer(viewerId());
         if (player == null) {
             return;
@@ -103,27 +94,11 @@ public final class CratePreviewMenu extends SoulMenu {
                 previewSettings.openSlot,
                 openButton(player)
         );
-        if (previewSettings.multiOpenButtons
-                && crateDefinition.opening().allowMultiOpen
-                && crateDefinition.opening().massOpening.enabled
-                && player.hasPermission(premiumOpeningSettings.multiOpenPermission)) {
-            List<Integer> presets = crateDefinition.opening().massOpening.presets;
-            List<Integer> slots = previewSettings.multiOpenSlots;
-            List<String> materials = previewSettings.multiOpenMaterials;
-            for (int index = 0; index < presets.size() && index < slots.size(); index++) {
-                int amount = presets.get(index);
-                int slot = slots.get(index);
-                String material = index < materials.size() ? materials.get(index) : "IRON_BLOCK";
-                multiOpenSlots.put(slot, amount);
-                getInventory().setItem(slot, multiOpenButton(player, amount, material));
-            }
-        } else {
-            GuiItemFactory.fillPreviewActionSlots(
-                    getInventory(),
-                    previewSettings.multiOpenSlots,
-                    previewSettings.grid.borderFillerMaterial
-            );
-        }
+        GuiItemFactory.fillPreviewActionSlots(
+                getInventory(),
+                previewSettings.multiOpenSlots,
+                previewSettings.grid.borderFillerMaterial
+        );
         if (previewSettings.backSlot >= 0) {
             getInventory().setItem(
                     previewSettings.backSlot,
@@ -150,11 +125,6 @@ public final class CratePreviewMenu extends SoulMenu {
         }
         if (click.slot() == previewSettings.openSlot) {
             openAction.accept(player, 1);
-            return;
-        }
-        Integer amount = multiOpenSlots.get(click.slot());
-        if (amount != null) {
-            openAction.accept(player, amount);
             return;
         }
         if (previewSettings.backSlot >= 0 && click.slot() == previewSettings.backSlot) {
@@ -197,38 +167,6 @@ public final class CratePreviewMenu extends SoulMenu {
 
     private boolean shouldShowKeyCount() {
         return crateDefinition.opening().requireKey || crateDefinition.keys().enabled;
-    }
-
-    private ItemStack multiOpenButton(Player player, int amount, String materialName) {
-        if (amount < 0) {
-            return GuiItemFactory.actionButton(
-                    messageService,
-                    player,
-                    materialName,
-                    "preview-open-all-title",
-                    "preview-open-all-lore"
-            );
-        }
-        Material material = Material.matchMaterial(materialName);
-        if (material == null || material.isAir()) {
-            material = Material.IRON_BLOCK;
-        }
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.displayName(messageService.component(
-                    player.getUniqueId(),
-                    "preview-open-xn-title",
-                    messageService.placeholder("amount", Integer.toString(amount))
-            ));
-            meta.lore(List.of(messageService.component(
-                    player.getUniqueId(),
-                    "preview-open-xn-lore",
-                    messageService.placeholder("amount", Integer.toString(amount))
-            )));
-            item.setItemMeta(meta);
-        }
-        return item;
     }
 
     private static int normalizeSize(int size) {

@@ -63,7 +63,7 @@ public final class CsgoSpinnerPhase implements PhaseRunner {
             );
             session.setCsgoSpinnerMenu(menu);
         } else {
-            menu.prepareRoulette();
+            menu.resetForSpin();
         }
         if (!isViewingMenu(player, menu)) {
             player.openInventory(menu.getInventory());

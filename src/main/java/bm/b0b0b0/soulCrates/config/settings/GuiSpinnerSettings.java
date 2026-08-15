@@ -9,7 +9,7 @@ public final class GuiSpinnerSettings extends YamlSerializable {
     public int size = 27;
 
     @Comment({
-            @CommentValue("Center track slot under the pointer. Default row slot 13."),
+            @CommentValue("Winning track slot under the pointer when the roulette stops. Default slot 13."),
     })
     public int winSlot = 13;
 

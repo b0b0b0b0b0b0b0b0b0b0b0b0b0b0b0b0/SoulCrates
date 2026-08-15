@@ -67,6 +67,6 @@ public final class HologramSettings extends YamlSerializable {
     })
     public List<String> lines = List.of(
             "<gold>{crate}</gold>",
-            "<gray>Click to open · Shift preview</gray>"
+            "<gray>Click to open</gray>"
     );
 }

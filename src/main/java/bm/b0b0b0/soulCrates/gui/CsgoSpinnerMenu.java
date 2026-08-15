@@ -11,13 +11,13 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 public final class CsgoSpinnerMenu extends SoulMenu {
 
     private static final int TRACK_START = 10;
     private static final int TRACK_END = 16;
     private static final int TRACK_LENGTH = TRACK_END - TRACK_START + 1;
-    private static final int CENTER_TRACK_INDEX = 3;
 
     private final MessageService messageService;
     private final GuiSpinnerSettings spinnerSettings;
@@ -57,32 +57,27 @@ public final class CsgoSpinnerMenu extends SoulMenu {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         int extra = Math.max(0, spinnerSettings.maxSpinSteps - spinnerSettings.minSpinSteps);
         stopOffset = spinnerSettings.minSpinSteps + (extra == 0 ? 0 : random.nextInt(extra + 1));
-        int winTapeIndex = stopOffset + CENTER_TRACK_INDEX;
+        int centerTrackIndex = centerTrackIndex();
+        int winTapeIndex = stopOffset + centerTrackIndex;
         int tapeLength = winTapeIndex + TRACK_LENGTH + 6;
         List<RewardDefinition> cells = new ArrayList<>(Collections.nCopies(tapeLength, null));
-        cells.set(winTapeIndex, winner);
-        if (spinnerSettings.baitEnabled) {
-            cells.set(winTapeIndex - 1, pickBait(random));
-            if (winTapeIndex - 2 >= 0) {
-                cells.set(winTapeIndex - 2, null);
-            }
-            if (winTapeIndex - 3 >= 0) {
-                cells.set(winTapeIndex - 3, pickBait(random));
-            }
-            if (winTapeIndex + 1 < tapeLength) {
-                cells.set(winTapeIndex + 1, null);
-            }
-        }
         for (int index = 0; index < tapeLength; index++) {
-            if (cells.get(index) != null) {
+            int distance = Math.abs(index - winTapeIndex);
+            if (distance == 0) {
+                cells.set(index, winner);
                 continue;
             }
-            if (index % 2 == 1) {
-                continue;
+            if (distance % 2 == 0) {
+                cells.set(index, pickTapeReward(random));
             }
-            cells.set(index, pickTapeReward(random));
         }
         tape = cells;
+    }
+
+    public void resetForSpin() {
+        stopped = false;
+        scrollOffset = 0;
+        lastCenterReward = null;
     }
 
     @Override
@@ -113,7 +108,7 @@ public final class CsgoSpinnerMenu extends SoulMenu {
             int tapeIndex = scrollOffset + trackIndex;
             RewardDefinition reward = tapeIndex >= 0 && tapeIndex < tape.size() ? tape.get(tapeIndex) : null;
             if (reward == null) {
-                getInventory().setItem(slot, null);
+                getInventory().setItem(slot, ItemStack.empty());
                 continue;
             }
             getInventory().setItem(
@@ -135,7 +130,7 @@ public final class CsgoSpinnerMenu extends SoulMenu {
         if (tape.isEmpty()) {
             return null;
         }
-        int tapeIndex = scrollOffset + CENTER_TRACK_INDEX;
+        int tapeIndex = scrollOffset + centerTrackIndex();
         if (tapeIndex < 0 || tapeIndex >= tape.size()) {
             return null;
         }
@@ -182,10 +177,6 @@ public final class CsgoSpinnerMenu extends SoulMenu {
         return pickWeighted(random, spinnerSettings.tapeRareBoost, false);
     }
 
-    private RewardDefinition pickBait(ThreadLocalRandom random) {
-        return pickWeighted(random, spinnerSettings.baitRareBoost, true);
-    }
-
     private RewardDefinition pickWeighted(ThreadLocalRandom random, double rareBoost, boolean bait) {
         double boost = Math.max(1.0, rareBoost);
         double total = 0.0;
@@ -226,6 +217,14 @@ public final class CsgoSpinnerMenu extends SoulMenu {
             return 0.0;
         }
         return reward.weight() * 100.0 / total;
+    }
+
+    private int centerTrackIndex() {
+        int index = spinnerSettings.winSlot - TRACK_START;
+        if (index < 0 || index >= TRACK_LENGTH) {
+            return 3;
+        }
+        return index;
     }
 
     private static boolean isTrackSlot(int slot) {

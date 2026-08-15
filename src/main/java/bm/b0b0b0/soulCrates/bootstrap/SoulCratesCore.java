@@ -156,7 +156,7 @@ public final class SoulCratesCore {
         redisMirror = new RedisPlayerMirror(plugin, mysql, pluginConfig.cratesSettings().redis);
         keyService = new KeyService(plugin, messageService, repository);
         keyService.attachMirror(redisMirror);
-        locationService = new CrateLocationService(repository);
+        locationService = new CrateLocationService(plugin.getDataFolder().toPath());
         playerDataService = new PlayerDataService(repository, keyService);
         playerDataService.attachMirror(redisMirror);
         npcService = new CrateNpcService(repository);

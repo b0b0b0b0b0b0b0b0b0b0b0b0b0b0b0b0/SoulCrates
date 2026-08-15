@@ -254,6 +254,7 @@ public final class CrateService {
             keyService.clearCache();
         }
         if (locationService != null) {
+            locationService.shutdown();
             locationService.clear();
         }
         if (playerDataService != null) {

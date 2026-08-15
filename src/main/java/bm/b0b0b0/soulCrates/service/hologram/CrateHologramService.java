@@ -45,11 +45,13 @@ public final class CrateHologramService {
         this.messageService = messageService;
         this.crateRegistry = crateRegistry;
         this.settings = settings;
+        normalizeLegacyLines(this.settings);
         this.lastWinnerService = lastWinnerService;
     }
 
     public void applySettings(HologramSettings settings) {
         this.settings = settings;
+        normalizeLegacyLines(this.settings);
         respawnAll();
     }
 
@@ -287,6 +289,36 @@ public final class CrateHologramService {
         } catch (NumberFormatException exception) {
             return fallback;
         }
+    }
+
+    private static void normalizeLegacyLines(HologramSettings settings) {
+        if (settings == null || settings.lines == null || settings.lines.isEmpty()) {
+            return;
+        }
+        List<String> normalized = new ArrayList<>(settings.lines.size());
+        boolean changed = false;
+        for (String line : settings.lines) {
+            String replacement = normalizeLegacyLine(line);
+            if (!replacement.equals(line)) {
+                changed = true;
+            }
+            normalized.add(replacement);
+        }
+        if (changed) {
+            settings.lines = List.copyOf(normalized);
+        }
+    }
+
+    private static String normalizeLegacyLine(String line) {
+        if (line == null) {
+            return "";
+        }
+        String trimmed = line.trim();
+        if ("<gray>Click to open · Shift preview</gray>".equalsIgnoreCase(trimmed)
+                || "<gray>Click to open - Shift preview</gray>".equalsIgnoreCase(trimmed)) {
+            return "<gray>Click to open</gray>";
+        }
+        return line;
     }
 
     private void respawnAll() {

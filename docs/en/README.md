@@ -2,173 +2,123 @@
 
 > [Russian version](../../README.md)
 
-Crates for Paper **1.21+** / **Folia**: keys, pity, reroll, SELECT mode, idle effects, MySQL+Redis for networks.
+SoulCrates is a production-focused crate system built around stability and performance, not just visual effects.
+
+It is designed to stay predictable under real load: critical I/O is async, opening flow is guarded with session/location locks, and reward delivery remains safe even in edge cases. Players get the flashy experience, while server owners get controlled load and fewer support incidents.
+
+What this means in practice:
+- opening flow avoids blocking operations on hot paths;
+- crate mechanics remain stable under Folia and concurrent interactions;
+- lower risk of race-condition style dupe scenarios;
+- one operational model for both single-server and multi-server setups.
+
+In short: SoulCrates sells the player experience while giving you stable operations behind the scenes.
+
+---
+
+## Why SoulCrates
+
+- Give whatever you want: after a win the plugin runs any console command — rank, kit, money, permissions, anything.
+- Production-oriented optimization: async workflow and careful DB interaction design.
+- Reliable opening flow: session/location lock strategy for concurrent safety.
+- Folia-ready architecture: region-threading friendly behavior instead of legacy assumptions.
+- Multiple crate scenarios: static map points and personal chest items in inventory.
+- Scales from single servers to networked infrastructure.
+
+Technical details (Folia model, MySQL/Redis sync, race-safety, Paper `libraries`) are documented below.
+
+## Rewards
+
+Player wins — your console commands run. No caps, no tie-in to specific plugins.
+
+- **Items** — `grants` on the reward (`DIAMOND:3`, `NETHERITE_SWORD:1`)
+- **Everything else** — `commands` on the reward: any command with `{player}`, `{uuid}`, `{crate}`, `{reward}`
+
+Examples: `eco give {player} 10000`, `lp user {player} parent set vip`, `kit give {player} start` — whatever you put in config gets executed.
+
+## What server owners get
+
+- Fast setup: install JAR, bind a crate, give keys, done.
+- Two placement modes: a static map point or personal chest items issued via `/sc givecrate`.
+- ModelEngine 3D crates: custom models and animations instead of a plain chest block.
+- Premium opening flow: CS:GO-style roulette, idle animations, holograms above crate points.
+- Personal chests and WorldGuard: whitelist regions where players may place their crate (default: `spawn`).
+- Split storage model: keys and progress in the database, static map points in a separate YAML you can wipe without resetting economy.
+- Operational tooling: config reload, locations list, in-game editor, stats, key/crate issuing.
+- When needed: PlaceholderAPI, ModelEngine, WorldGuard, Redis for networks.
+
+## What players get
+
+- Clean interface: open a crate and press one clear `Open` button in preview.
+- Two crate formats: a static point on the map (admin bound a block — player walks up and opens) or a personal chest item (received, placed where allowed, opened by the owner).
+- WorldGuard support: personal chests can only be placed in whitelisted regions — for example spawn, even when normal building is denied. Outside the whitelist, normal region rules apply.
+- Every issued chest has a unique database ID. Fake items or duplicate copies cannot be opened — only the registered instance counts.
+- Transparent odds and a polished opening animation.
+- Safe reward delivery: if inventory is full, rewards are queued and can be claimed later.
 
 ---
 
 ## Quick start
 
-1. Drop the JAR into `plugins/`, restart the server.
-2. The plugin creates `plugins/SoulCrates/` and a **`default`** crate automatically.
-3. In-game (OP or permissions below):
+1. Put the JAR into `plugins/` and restart the server.
+2. The plugin creates `plugins/SoulCrates/` and a default crate `default`.
+3. Run:
 
-```
+```text
 /sc setcrate default
-/sc givekey <name> default 10
+/sc givekey <player> default 10
 ```
 
-4. Look at the block → **RMB** to open, **Shift+RMB** for preview.  
-   Or: `/sc open default`
-
-Done — one working crate on a block.
+4. Player right-clicks the bound block to open.
+5. Preview can be tested with `/sc preview default`.
 
 ---
 
-## New crate
+## Where data is stored
 
-1. Copy `plugins/SoulCrates/crates/default.yml` → `donate.yml`
-2. Set `id: donate` (must match the filename) and `displayName`
-3. `/sc reload`
-4. `/sc setcrate donate` + `/sc givekey <name> donate 10`
+| Path | Content |
+|---|---|
+| `plugins/SoulCrates/data/crates.db` | Keys, pity, opens, claim, history, internal state |
+| `plugins/SoulCrates/data/crate-locations.yml` | Static `/sc setcrate` bindings |
+| `plugins/SoulCrates/crates/*.yml` | Crate definitions and rewards |
 
-In-game reward editor: `/sc editor` (existing crates only).
-
----
-
-## File layout
-
-| Path | Purpose |
-|------|---------|
-| `config.yml` | DB, Redis, holograms, premium permissions |
-| `crates/<id>.yml` | Crate: rewards, keys, animation, opening |
-| `shop.yml` | Optional in-game key shop (`/sc shop`), **disabled by default** |
-| `gui/shop.yml` | Shop GUI slots (not prices) |
-| `gui/*.yml` | Other menu layouts |
-| `lang/messages_*.yml` | Player messages (MiniMessage) |
-
-After editing YAML: **`/sc reload`**.
+If you want to wipe only static crate points, remove `crate-locations.yml` and keep the DB intact.
 
 ---
 
-## `config.yml` — essentials
+## Configuration
 
-```yaml
-defaultCrateId: default
+On first start the plugin creates `plugins/SoulCrates/` with full configs, defaults, and inline comments for every option. Edit files on disk — a partial YAML snippet in README would only mislead you.
 
-database:
-  mode: SQLITE          # MYSQL for proxy/network
+- `config.yml` — database, Redis, holograms, global settings
+- `crates/<id>.yml` — crates, rewards, opening, keys, animations
+- `shop.yml` — optional key shop
+- `gui/*.yml` — menu layouts and slots
+- `lang/messages_*.yml` — player-facing text
 
-redis:
-  enabled: false        # true + MYSQL on proxy
+After edits: `/sc reload`.
 
-idleDisplay:
-  enabled: true
-  hologram:
-    enabled: true
-    lines:
-      - "<gold>{crate}</gold>"
-      - "<gray>RMB open · Shift preview</gray>"
-```
-
-**Proxy:** `database.mode: MYSQL` + `redis.enabled: true`, same channel `soulcrates:sync` on every server.
-
----
-
-## `crates/<id>.yml` — skeleton
-
-```yaml
-id: donate
-displayName: "<gold>Donate</gold>"
-
-engine:
-  type: VANILLA_DISPLAY
-  blockMaterial: ENDER_CHEST
-
-opening:
-  requireKey: true
-  previewEnabled: true
-  keysRequired: 1
-  rewardsMode: RANDOM       # SELECT — player picks reward in a menu
-  openCost:
-    enabled: false
-    vaultPrice: 500.0
-    keysFirst: true
-
-keys:
-  enabled: true
-  virtualKeys: true
-  physicalKeys: true
-
-animations:
-  preset: CLASSIC           # BLAZING, KEYSTORM, CSGO_STYLE, FIREWORKS…
-
-idleEffects:
-  - pattern: DEFAULT
-    particle: REDSTONE
-    color: "#ff0000"
-    amount: 2
-
-rewards:
-  - id: common
-    weight: 70
-    displayName: "Diamond Stack"
-    material: DIAMOND
-    grants:
-      - "DIAMOND:3"
-  - id: rare
-    weight: 25
-    displayName: "Emerald Stack"
-    material: EMERALD
-    grants:
-      - "EMERALD:5"
-  - id: legendary
-    weight: 20
-    displayName: "Netherite Ingot"
-    material: NETHERITE_INGOT
-    grants:
-      - "NETHERITE_INGOT:1"
-    broadcast: true
-```
-
-**grants** — items: `MATERIAL:amount`.  
-**commands** — optional, for ranks/money/kits when you need them. Placeholders: `{player}`, `{uuid}`, `{crate}`, `{reward}`.
-
-Default crate gives **items only**, no economy commands.
-
----
-
-## `shop.yml` (optional)
-
-Default: `enabled: false`. Enable only for an in-game Vault shop; paid keys are usually sold on a website.
-
-```yaml
-enabled: false
-entries: []
-```
-
-Legacy `vault:1000` in reward grants **does not work** — use `commands` if needed.
+For multi-server setups switch the database to MySQL and enable Redis in `config.yml` — one MySQL and a shared channel on every instance.
 
 ---
 
 ## Commands
 
-| Command | Who |
-|---------|-----|
-| `/sc open [crate] [amount]` | player |
-| `/sc preview [crate]` | player |
-| `/sc shop` | player |
-| `/sc keys [crate]` | player |
-| `/sc virtualkeys` | player |
-| `/sc paykey <player> <crate> <amount>` | player |
-| `/sc claim` | player (pending rewards) |
-| `/sc stats [player]` | player / admin |
-| `/sc setcrate <crate>` | admin (look at block) |
-| `/sc setcrate remove` | admin |
-| `/sc setnpc <crate>` | admin (Citizens) |
-| `/sc givekey <player> <crate> [amount] [physical]` | admin |
-| `/sc editor` | admin |
-| `/sc locations` | admin |
-| `/sc reload` | admin |
+- `/sc open [crate] [amount]` - open crate
+- `/sc preview [crate]` - open preview
+- `/sc keys [crate]` - show key balance
+- `/sc virtualkeys` - open virtual keys GUI
+- `/sc paykey <player> <crate> <amount>` - transfer virtual keys
+- `/sc claim` - claim queued rewards
+- `/sc stats [player]` - open stats
+- `/sc setcrate <crate>` - bind crate to target block
+- `/sc setcrate remove` - unbind crate from target block
+- `/sc setnpc <crate>` - bind crate to NPC (Citizens)
+- `/sc givekey <player> <crate> [amount] [physical]` - give keys
+- `/sc givecrate <player> <crate> [preset] [amount]` - give physical crates
+- `/sc editor` - open crate editor
+- `/sc locations` - list bound locations
+- `/sc reload` - reload configs
 
 Aliases: `sc`, `crates`.
 
@@ -176,28 +126,37 @@ Aliases: `sc`, `crates`.
 
 ## Permissions
 
-| Permission | Grants |
-|------------|--------|
-| `soulcrates.command.open` | open |
-| `soulcrates.command.preview` | preview |
-| `soulcrates.command.shop` | shop |
-| `soulcrates.command.virtualkeys` | keys GUI |
-| `soulcrates.command.paykey` | transfer virtual keys |
-| `soulcrates.command.admin` | setcrate, editor, setnpc |
-| `soulcrates.command.givekey` | give keys |
-| `soulcrates.command.reload` | reload |
-| `soulcrates.open.multi` | `/sc open … 5` and bulk in preview |
+- `soulcrates.command.open` - `/sc open`
+- `soulcrates.command.preview` - `/sc preview`
+- `soulcrates.command.keys` - `/sc keys`
+- `soulcrates.command.virtualkeys` - `/sc virtualkeys`
+- `soulcrates.command.paykey` - `/sc paykey`
+- `soulcrates.command.claim` - `/sc claim`
+- `soulcrates.command.givekey` - give keys
+- `soulcrates.command.givecrate` - give physical crates
+- `soulcrates.command.admin` - crate binding, editor, locations list
+- `soulcrates.command.reload` - `/sc reload`
+- `soulcrates.open.multi` - multi-open through amount argument
 
-Per-crate: `opening.permission` in the crate yml.
+Per-crate access can be configured via `opening.permission` in `crates/<id>.yml`.
 
 ---
 
 ## PlaceholderAPI
 
-`%soulcrates_keys_<crateId>%`, `%soulcrates_total_keys_<crateId>%`, `%soulcrates_pity_<crateId>%`, `%soulcrates_opens_<crateId>%`, etc.
+Examples:
+
+- `%soulcrates_keys_<crateId>%`
+- `%soulcrates_total_keys_<crateId>%`
+- `%soulcrates_pity_<crateId>%`
+- `%soulcrates_opens_<crateId>%`
 
 ---
 
-## Softdepend
+## Optional plugins
 
-Vault, PlaceholderAPI, Citizens, ModelEngine, DecentHolograms — optional; related features simply won't run without them.
+- PlaceholderAPI — placeholders in menus and holograms
+- ModelEngine — 3D crate models
+- WorldGuard — whitelist regions for personal chests
+
+Holograms use the built-in engine — no third-party hologram plugin required.

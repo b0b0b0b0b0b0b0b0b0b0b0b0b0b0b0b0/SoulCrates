@@ -77,6 +77,8 @@ givekey-received: "<color:#34D399>Вы получили <color:#FBBF24>{amount}<
 player-not-found: "<color:#FB7185>Игрок не найден.</color>"
 setcrate-success: "<color:#34D399>Блок привязан к кейсу <color:#FBBF24>{crate}</color>.</color>"
 setcrate-success-preset: "<color:#34D399>Блок привязан к <color:#FBBF24>{crate}</color>. Пресет анимации: <color:#A78BFA>{preset}</color>.</color>"
+setcrate-already-bound: "<color:#FB7185>Этот блок уже привязан к кейсу <color:#FBBF24>{crate}</color>. Сначала снимите привязку через <color:#FBBF24>/sc setcrate remove</color>.</color>"
+setcrate-bind-failed: "<color:#FB7185>Не удалось привязать блок к кейсу. Подробности в консоли сервера.</color>"
 setcrate-invalid-preset: "<color:#FB7185>Неизвестный пресет <color:#FBBF24>{preset}</color>. SHOWCASE, CSGO_STYLE, SHULKER_PICK, MOB_PICK.</color>"
 setcrate-no-block: "<color:#FB7185>Посмотрите на блок в радиусе 5 блоков.</color>"
 unsetcrate-success: "<color:#34D399>Привязка кейса снята.</color>"

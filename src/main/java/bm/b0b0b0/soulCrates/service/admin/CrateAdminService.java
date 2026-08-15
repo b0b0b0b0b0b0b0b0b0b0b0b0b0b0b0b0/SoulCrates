@@ -167,6 +167,25 @@ public final class CrateAdminService {
             return;
         }
         String normalizedCrateId = crateId.toLowerCase(Locale.ROOT);
+        String locationSummary = locationSummary(location);
+        Optional<String> existingBinding = locationService.findCrateId(location);
+        if (existingBinding.isPresent()) {
+            String boundCrateId = existingBinding.get();
+            String boundCrateName = crateRegistry.find(boundCrateId)
+                    .map(CrateDefinition::displayName)
+                    .orElse(boundCrateId);
+            messageService.send(
+                    player.getUniqueId(),
+                    "setcrate-already-bound",
+                    messageService.placeholder("crate", boundCrateName)
+            );
+            plugin.getLogger().info(
+                    "Setcrate skipped at " + locationSummary
+                            + " for " + player.getName()
+                            + ": already bound to " + boundCrateId
+            );
+            return;
+        }
         if (presetId != null && !presetId.isBlank() && !AnimationPresetRegistry.isKnownPreset(presetId)) {
             messageService.send(
                     player.getUniqueId(),
@@ -181,26 +200,41 @@ public final class CrateAdminService {
             return;
         }
         CrateDefinition crate = crateOptional.get();
-        locationService.bind(location, normalizedCrateId).thenRun(() -> PluginSchedulers.run(plugin, player, () -> {
-            if (idleCrateDisplayService != null) {
-                idleCrateDisplayService.onUnbind(location);
-                idleCrateDisplayService.onBind(location, normalizedCrateId);
-            }
-            if (presetId != null && !presetId.isBlank()) {
-                messageService.send(
-                        player.getUniqueId(),
-                        "setcrate-success-preset",
-                        messageService.placeholder("crate", crate.displayName()),
-                        messageService.placeholder("preset", presetId.trim().toUpperCase(Locale.ROOT))
-                );
-                return;
-            }
-            messageService.send(
-                    player.getUniqueId(),
-                    "setcrate-success",
-                    messageService.placeholder("crate", crate.displayName())
-            );
-        }));
+        locationService.bind(location, normalizedCrateId)
+                .thenRun(() -> PluginSchedulers.run(plugin, player, () -> {
+                    if (idleCrateDisplayService != null) {
+                        idleCrateDisplayService.onUnbind(location);
+                        idleCrateDisplayService.onBind(location, normalizedCrateId);
+                    }
+                    if (presetId != null && !presetId.isBlank()) {
+                        messageService.send(
+                                player.getUniqueId(),
+                                "setcrate-success-preset",
+                                messageService.placeholder("crate", crate.displayName()),
+                                messageService.placeholder("preset", presetId.trim().toUpperCase(Locale.ROOT))
+                        );
+                    } else {
+                        messageService.send(
+                                player.getUniqueId(),
+                                "setcrate-success",
+                                messageService.placeholder("crate", crate.displayName())
+                        );
+                    }
+                    plugin.getLogger().info(
+                            "Setcrate bound " + normalizedCrateId
+                                    + " at " + locationSummary
+                                    + " by " + player.getName()
+                    );
+                }))
+                .exceptionally(throwable -> {
+                    plugin.getLogger().warning(
+                            "Setcrate failed for " + normalizedCrateId
+                                    + " at " + locationSummary
+                                    + ": " + throwable.getMessage()
+                    );
+                    PluginSchedulers.run(plugin, player, () -> messageService.send(player.getUniqueId(), "setcrate-bind-failed"));
+                    return null;
+                });
     }
 
     private Optional<CrateDefinition> ensureCrateDefinition(String crateId, Location location, String presetId) {
@@ -473,5 +507,15 @@ public final class CrateAdminService {
             }
         }
         return builder.isEmpty() ? "Crate" : builder.toString();
+    }
+
+    private static String locationSummary(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return "unknown";
+        }
+        return location.getWorld().getName()
+                + ":" + location.getBlockX()
+                + ":" + location.getBlockY()
+                + ":" + location.getBlockZ();
     }
 }

@@ -95,7 +95,6 @@ public final class CrateMenuService {
                 player.getUniqueId(),
                 messageService,
                 pluginConfig.guiPreviewSettings(),
-                pluginConfig.cratesSettings().premiumOpening,
                 crate,
                 rewardRollService,
                 keyService,

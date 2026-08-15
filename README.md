@@ -2,185 +2,123 @@
 
 > [English version](docs/en/README.md)
 
-Кейсы для Paper **1.21+** / **Folia**: ключи, pity, reroll, SELECT-режим, idle-эффекты, MySQL+Redis для сети.
+SoulCrates - система кейсов для боевых серверов с упором на стабильность и производительность, а не «эффекты ради эффектов».
+
+Плагин держит онлайн без нервов: тяжёлые операции с данными выполняются асинхронно, открытия защищены блокировками сессий и локаций, а выдача наград проходит предсказуемо даже в спорных ситуациях. Игрок видит красивую анимацию, владелец сервера видит контролируемую нагрузку и меньше тикетного ада.
+
+Что это значит на практике:
+- открытие не просаживает производительность сервера и не блокирует основной поток;
+- механика кейсов не сыпется на Folia и под одновременной нагрузкой;
+- меньше шансов словить дюп/гонку при открытии;
+- один и тот же подход работает и на одиночном сервере, и в мультисерверной схеме.
+
+Если коротко: SoulCrates продает эмоцию игроку, а тебе дает спокойную эксплуатацию без технического позора.
 
 ---
 
-## Быстрый старт
+## Почему SoulCrates
 
-1. Положи JAR в `plugins/`, перезапусти сервер.
-2. Плагин сам создаст `plugins/SoulCrates/` и кейс **`default`**.
-3. В игре (нужен OP или права ниже):
+- Выдавай что хочешь: после выигрыша выполняется любая консольная команда — ранг, кит, деньги, права, что угодно.
+- Оптимизирован для боевых серверов: асинхронные операции, аккуратная работа с базой данных и без лишней нагрузки на тик.
+- Надёжен на открытии: блокировки по сессии и точке, защита от спорных одновременных действий.
+- Поддержка Folia: корректная работа с региональными потоками, без устаревших костылей.
+- Закрывает сразу несколько сценариев: статичные кейсы на карте и личные сундуки в инвентаре.
+- Масштабируется: нормально живет на одиночном сервере и в мультисерверной инфраструктуре.
 
-```
+Техподробности (Folia, MySQL, Redis, защита от гонок, библиотеки Paper) идут ниже по разделам.
+
+## Награды
+
+Выиграл кейс — плагин выполняет твои команды от консоли. Без потолка и без привязки к конкретным плагинам.
+
+- **Предметы** — `grants` в награде (`DIAMOND:3`, `NETHERITE_SWORD:1`)
+- **Всё остальное** — `commands` в награде: любая команда с `{player}`, `{uuid}`, `{crate}`, `{reward}`
+
+Примеры: `eco give {player} 10000`, `lp user {player} parent set vip`, `kit give {player} start` — что пропишешь в конфиге, то и выдаст.
+
+## Что это дает админу
+
+- Быстрый запуск: поставил JAR, сделал `/sc setcrate`, выдал ключи — всё работает.
+- Два режима размещения: статичная точка на карте или выдача личных сундуков игрокам через `/sc givecrate`.
+- 3D-кейсы через ModelEngine: свои модели и анимации вместо обычного блока-сундука.
+- Зрелищное открытие: рулетка в стиле CS:GO, анимации покоя, голограммы над точкой кейса.
+- Личные сундуки и WorldGuard: белый список регионов, где игрок может поставить свой кейс (по умолчанию — `spawn`).
+- Раздельные данные: ключи и прогресс в базе, статичные точки на карте — в отдельном YAML, можно сбросить без вайпа экономики.
+- Удобное обслуживание: перезагрузка конфигов, список точек, редактор, выдача ключей и кейсов, статистика.
+- При необходимости: PlaceholderAPI, ModelEngine, WorldGuard, Redis для сети.
+
+## Что это дает игроку
+
+- Понятный интерфейс: открыл кейс и нажал одну кнопку «Открыть» в предпросмотре.
+- Два формата кейсов: статичный на карте (админ поставил точку — игрок подошёл и открыл) или личный сундук в инвентаре (получил, поставил где разрешено, открыл сам).
+- WorldGuard: свой сундук можно поставить только в регионах из белого списка — например, на спавне, даже если там запрещено обычное строительство. Вне списка действуют обычные правила региона.
+- Каждый выданный сундук имеет уникальный ID в базе. Подделать предмет или открыть чужую копию нельзя — засчитывается только зарегистрированный экземпляр.
+- Прозрачные шансы и зрелищная анимация открытия.
+- Надёжная выдача: если инвентарь забит, награды не теряются — их можно забрать позже.
+
+---
+
+## Быстрый старт (5 минут)
+
+1. Положи JAR в `plugins/` и перезапусти сервер.
+2. Плагин создаст папку `plugins/SoulCrates/` и стандартный кейс `default`.
+3. Выполни:
+
+```text
 /sc setcrate default
 /sc givekey <ник> default 10
 ```
 
-4. Смотри на блок → **ПКМ** открыть, **Shift+ПКМ** preview.  
-   Или: `/sc open default`
-
-Готово — один рабочий кейс на блоке.
+4. Игрок смотрит на привязанный блок и жмет ПКМ.
+5. Для проверки предпросмотра можно использовать `/sc preview default`.
 
 ---
 
-## Новый кейс
+## Где хранятся данные
 
-1. Скопируй `plugins/SoulCrates/crates/default.yml` → `donate.yml`
-2. Поменяй `id: donate` (должен совпадать с именем файла) и `displayName`
-3. `/sc reload`
-4. `/sc setcrate donate` + `/sc givekey <ник> donate 10`
+| Путь | Что хранится |
+|---|---|
+| `plugins/SoulCrates/data/crates.db` | Ключи, pity, открытия, отложенные награды, история и служебные данные |
+| `plugins/SoulCrates/data/crate-locations.yml` | Статичные привязки `/sc setcrate` |
+| `plugins/SoulCrates/crates/*.yml` | Описание кейсов и наград |
 
-Редактор наград в игре: `/sc editor` (только для уже существующих кейсов).
-
----
-
-## Что где лежит
-
-| Путь | Зачем |
-|------|--------|
-| `config.yml` | БД, Redis, голограммы, premium-права |
-| `crates/<id>.yml` | Кейс: награды, ключи, анимация, opening |
-| `shop.yml` | Опциональный in-game магазин ключей (`/sc shop`), **выключен по умолчанию** |
-| `gui/shop.yml` | Слоты GUI магазина (не цены) |
-| `lang/messages_*.yml` | Тексты игрокам (MiniMessage) |
-
-После правки YAML: **`/sc reload`**.
+Если нужно быстро сбросить только статичные точки, удаляй `crate-locations.yml` - БД с ключами и прогрессом останется целой.
 
 ---
 
-## `config.yml` — минимум
+## Настройка
 
-```yaml
-defaultCrateId: default
+При первом запуске плагин сам создаёт `plugins/SoulCrates/` со всеми конфигами, дефолтами и комментариями к параметрам. Редактируй их на месте — частичный «скелет» в README только вводит в заблуждение.
 
-database:
-  mode: SQLITE          # MYSQL — для прокси/сети
+- `config.yml` — база данных, Redis, голограммы, общие настройки
+- `crates/<id>.yml` — кейсы, награды, открытие, ключи, анимации
+- `shop.yml` — опциональный магазин ключей
+- `gui/*.yml` — слоты и разметка интерфейсов
+- `lang/messages_*.yml` — тексты игрокам
 
-redis:
-  enabled: false        # true + MYSQL на прокси
+После правок: `/sc reload`.
 
-idleDisplay:
-  enabled: true
-  hologram:
-    enabled: true
-    lines:
-      - "<gold>{crate}</gold>"
-      - "<gray>ПКМ — открыть · Shift — preview</gray>"
-```
-
-**Прокси:** `database.mode: MYSQL` + `redis.enabled: true`, один канал `soulcrates:sync` на всех серверах.
-
----
-
-## `crates/<id>.yml` — скелет
-
-```yaml
-id: donate
-displayName: "<gold>Donate</gold>"
-
-engine:
-  type: VANILLA_DISPLAY
-  blockMaterial: ENDER_CHEST
-
-opening:
-  requireKey: true
-  previewEnabled: true
-  keysRequired: 1
-  rewardsMode: RANDOM       # SELECT — игрок выбирает награду в меню
-  openCost:
-    enabled: false
-    vaultPrice: 500.0
-    keysFirst: true
-
-keys:
-  enabled: true
-  virtualKeys: true
-  physicalKeys: true
-
-animations:
-  preset: CLASSIC           # BLAZING, KEYSTORM, CSGO_STYLE, FIREWORKS…
-
-idleEffects:
-  - pattern: DEFAULT
-    particle: REDSTONE
-    color: "#ff0000"
-    amount: 2
-
-rewards:
-  - id: common
-    weight: 70
-    displayName: "Diamond Stack"
-    material: DIAMOND
-    grants:
-      - "DIAMOND:3"
-  - id: rare
-    weight: 25
-    displayName: "Emerald Stack"
-    material: EMERALD
-    grants:
-      - "EMERALD:5"
-  - id: legendary
-    weight: 20
-    displayName: "Netherite Ingot"
-    material: NETHERITE_INGOT
-    grants:
-      - "NETHERITE_INGOT:1"
-    broadcast: true
-```
-
-**grants** — предметы: `MATERIAL:amount`.  
-**commands** — опционально, для рангов/денег/китов (если нужно). Плейсхолдеры: `{player}`, `{uuid}`, `{crate}`, `{reward}`.
-
-Дефолтный кейс выдаёт **только предметы**, без economy-команд.
-
----
-
-## `shop.yml` (опционально)
-
-По умолчанию `enabled: false`. Включай только если нужен in-game магазин за Vault; ключи с доната обычно продают на сайте.
-
-```yaml
-enabled: false
-entries: []
-```
-
-Пример записи (EssentialsX + Vault):
-
-```yaml
-enabled: true
-entries:
-  - enabled: true
-    crate-id: "donate"
-    key-amount: 1
-    vault-price: 500.0
-    item-cost: ""
-    display-material: "TRIPWIRE_HOOK"
-```
-
-Старый `vault:1000` в grants наград **не работает** — только через `commands` при необходимости.
+Для мультисервера в `config.yml` переключи базу на MySQL и включи Redis — один MySQL и общий канал на всех инстансах.
 
 ---
 
 ## Команды
 
-| Команда | Кто |
-|---------|-----|
-| `/sc open [кейс] [кол-во]` | игрок |
-| `/sc preview [кейс]` | игрок |
-| `/sc shop` | игрок |
-| `/sc keys [кейс]` | игрок |
-| `/sc virtualkeys` | игрок |
-| `/sc paykey <игрок> <кейс> <кол-во>` | игрок |
-| `/sc claim` | игрок (очередь наград) |
-| `/sc stats [игрок]` | игрок / админ |
-| `/sc setcrate <кейс>` | админ (смотри на блок) |
-| `/sc setcrate remove` | админ |
-| `/sc setnpc <кейс>` | админ (Citizens) |
-| `/sc givekey <игрок> <кейс> [кол-во] [physical]` | админ |
-| `/sc editor` | админ |
-| `/sc locations` | админ |
-| `/sc reload` | админ |
+- `/sc open [кейс] [кол-во]` - открыть кейс
+- `/sc preview [кейс]` - открыть предпросмотр
+- `/sc keys [кейс]` - показать ключи
+- `/sc virtualkeys` - меню виртуальных ключей
+- `/sc paykey <игрок> <кейс> <кол-во>` - передать виртуальные ключи
+- `/sc claim` - забрать отложенные награды
+- `/sc stats [игрок]` - статистика открытий
+- `/sc setcrate <кейс>` - привязать кейс к блоку
+- `/sc setcrate remove` - снять привязку с блока
+- `/sc setnpc <кейс>` - привязать кейс к NPC (Citizens)
+- `/sc givekey <игрок> <кейс> [кол-во] [physical]` - выдать ключи
+- `/sc givecrate <игрок> <кейс> [preset] [кол-во]` - выдать физический кейс
+- `/sc editor` - редактор кейсов
+- `/sc locations` - список привязанных точек
+- `/sc reload` - перезагрузка конфигов
 
 Алиасы: `sc`, `crates`.
 
@@ -188,28 +126,37 @@ entries:
 
 ## Права
 
-| Право | Что даёт |
-|-------|----------|
-| `soulcrates.command.open` | открытие |
-| `soulcrates.command.preview` | preview |
-| `soulcrates.command.shop` | магазин |
-| `soulcrates.command.virtualkeys` | GUI ключей |
-| `soulcrates.command.paykey` | перевод вирт. ключей |
-| `soulcrates.command.admin` | setcrate, editor, setnpc |
-| `soulcrates.command.givekey` | выдача ключей |
-| `soulcrates.command.reload` | reload |
-| `soulcrates.open.multi` | `/sc open … 5` и bulk в preview |
+- `soulcrates.command.open` - `/sc open`
+- `soulcrates.command.preview` - `/sc preview`
+- `soulcrates.command.keys` - `/sc keys`
+- `soulcrates.command.virtualkeys` - `/sc virtualkeys`
+- `soulcrates.command.paykey` - `/sc paykey`
+- `soulcrates.command.claim` - `/sc claim`
+- `soulcrates.command.givekey` - выдача ключей
+- `soulcrates.command.givecrate` - выдача физических кейсов
+- `soulcrates.command.admin` - привязка кейсов, редактор, список точек
+- `soulcrates.command.reload` - `/sc reload`
+- `soulcrates.open.multi` - массовое открытие через аргумент количества
 
-Per-crate: поле `opening.permission` в yml кейса.
+Доступ к отдельному кейсу можно задать через `opening.permission` в `crates/<id>.yml`.
 
 ---
 
 ## PlaceholderAPI
 
-`%soulcrates_keys_<crateId>%`, `%soulcrates_total_keys_<crateId>%`, `%soulcrates_pity_<crateId>%`, `%soulcrates_opens_<crateId>%` и др.
+Примеры:
+
+- `%soulcrates_keys_<crateId>%`
+- `%soulcrates_total_keys_<crateId>%`
+- `%soulcrates_pity_<crateId>%`
+- `%soulcrates_opens_<crateId>%`
 
 ---
 
-## Softdepend
+## Опциональные плагины
 
-Vault, PlaceholderAPI, Citizens, ModelEngine, DecentHolograms — опционально; без них связанные фичи просто не работают.
+- PlaceholderAPI — плейсхолдеры в интерфейсах и голограммах
+- ModelEngine — 3D-модели кейсов
+- WorldGuard — белый список регионов для личных сундуков
+
+Голограммы работают на встроенном движке — отдельные hologram-плагины не нужны.
