@@ -16,6 +16,7 @@ import bm.b0b0b0.soulCrates.model.CrateInstance;
 import bm.b0b0b0.soulCrates.service.CrateRegistry;
 import bm.b0b0b0.soulCrates.service.claim.ClaimService;
 import bm.b0b0b0.soulCrates.service.key.KeyService;
+import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
 import bm.b0b0b0.soulCrates.service.open.CrateOpenCallbacks;
 import bm.b0b0b0.soulCrates.service.physical.PhysicalCrateService;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
@@ -37,6 +38,7 @@ public final class CrateMenuService {
     private final KeyShopService keyShopService;
     private final ClaimService claimService;
     private final KeyService keyService;
+    private final CrateLocationService locationService;
     private final PhysicalCrateService physicalCrateService;
     private final CrateOpenCallbacks openCallbacks;
     private final Consumer<PluginConfig> configApplier;
@@ -52,6 +54,7 @@ public final class CrateMenuService {
             KeyShopService keyShopService,
             ClaimService claimService,
             KeyService keyService,
+            CrateLocationService locationService,
             PhysicalCrateService physicalCrateService,
             CrateOpenCallbacks openCallbacks,
             Consumer<PluginConfig> configApplier
@@ -65,6 +68,7 @@ public final class CrateMenuService {
         this.keyShopService = keyShopService;
         this.claimService = claimService;
         this.keyService = keyService;
+        this.locationService = locationService;
         this.physicalCrateService = physicalCrateService;
         this.openCallbacks = openCallbacks;
         this.configApplier = configApplier;
@@ -86,6 +90,7 @@ public final class CrateMenuService {
         }
         CrateDefinition crate = crateOptional.get();
         Location resolved = openLocation == null ? player.getLocation() : openLocation;
+        boolean boundStaticCrate = isBoundCrateLocation(resolved, crate.id());
         CratePreviewMenu menu = new CratePreviewMenu(
                 player.getUniqueId(),
                 messageService,
@@ -93,6 +98,8 @@ public final class CrateMenuService {
                 pluginConfig.cratesSettings().premiumOpening,
                 crate,
                 rewardRollService,
+                keyService,
+                boundStaticCrate,
                 (target, amount) -> openCallbacks.proceedOpenFlow(target, crate, resolved, amount),
                 null
         );
@@ -212,5 +219,14 @@ public final class CrateMenuService {
             );
             player.openInventory(menu.getInventory());
         }));
+    }
+
+    private boolean isBoundCrateLocation(Location location, String crateId) {
+        if (location == null || location.getWorld() == null || crateId == null || crateId.isBlank()) {
+            return false;
+        }
+        return locationService.findCrateId(location.getBlock().getLocation())
+                .map(boundId -> boundId.equalsIgnoreCase(crateId))
+                .orElse(false);
     }
 }

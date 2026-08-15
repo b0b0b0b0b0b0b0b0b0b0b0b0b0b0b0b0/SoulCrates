@@ -10,7 +10,7 @@ public final class OpeningSettings extends YamlSerializable {
     @Comment({
             @CommentValue("Require a physical or virtual key before opening."),
     })
-    public boolean requireKey = false;
+    public boolean requireKey = true;
 
     @Comment({
             @CommentValue("Show preview GUI before opening."),

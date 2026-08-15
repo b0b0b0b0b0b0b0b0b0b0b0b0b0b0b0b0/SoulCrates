@@ -144,7 +144,7 @@ public final class ShulkerPickPhase implements PhaseRunner {
         revealSent = false;
         picked = false;
         center = PickArenaLayout.resolvePlayerCenter(player);
-        hidePhysicalCrateBlock(session);
+        session.hideOpeningCrateBlock();
         List<RewardDefinition> enabled = crateDefinition.rewards().stream().filter(RewardDefinition::enabled).toList();
         if (enabled.isEmpty()) {
             enabled = List.of(rolledReward);
@@ -543,23 +543,6 @@ public final class ShulkerPickPhase implements PhaseRunner {
             pods.add(pod);
         }
     }
-
-    private void hidePhysicalCrateBlock(CrateOpeningSession session) {
-        if (session.context().instanceId() == null) {
-            return;
-        }
-        Location crateLocation = session.context().crateLocation();
-        if (crateLocation == null || crateLocation.getWorld() == null) {
-            return;
-        }
-        PluginSchedulers.runAt(session.plugin(), crateLocation, () -> {
-            Block block = crateLocation.getBlock();
-            if (!block.getType().isAir()) {
-                block.setType(Material.AIR, false);
-            }
-        });
-    }
-
     private void startBossBar(Player player) {
         bossBar = BossBar.bossBar(
                 bossBarTitle(player, pickTicksRemaining),

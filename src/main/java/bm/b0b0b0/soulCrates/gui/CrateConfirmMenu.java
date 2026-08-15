@@ -56,7 +56,6 @@ public final class CrateConfirmMenu extends SoulMenu {
         }
         Player player = click.player();
         if (click.slot() == confirmSettings.confirmSlot) {
-            player.closeInventory();
             confirmAction.accept(player);
             return;
         }

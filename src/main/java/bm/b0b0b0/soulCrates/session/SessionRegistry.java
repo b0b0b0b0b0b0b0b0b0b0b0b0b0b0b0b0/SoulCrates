@@ -1,11 +1,13 @@
 package bm.b0b0b0.soulCrates.session;
 
+import bm.b0b0b0.soulCrates.service.location.CrateLocationService;
 import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -15,6 +17,7 @@ public final class SessionRegistry {
     private final long timeoutSeconds;
     private final Map<UUID, CrateOpeningSession> activeByPlayer = new ConcurrentHashMap<>();
     private final Map<UUID, UUID> playerBySession = new ConcurrentHashMap<>();
+    private final Map<String, UUID> activeByBoundLocation = new ConcurrentHashMap<>();
     private final Set<UUID> bulkLocked = ConcurrentHashMap.newKeySet();
 
     public SessionRegistry(JavaPlugin plugin, long timeoutSeconds) {
@@ -37,6 +40,30 @@ public final class SessionRegistry {
 
     public boolean isBusy(UUID playerId) {
         return hasActive(playerId) || isBulkLocked(playerId);
+    }
+
+    public boolean isBoundLocationOccupied(Location location, UUID playerId) {
+        if (location == null || location.getWorld() == null) {
+            return false;
+        }
+        UUID owner = activeByBoundLocation.get(CrateLocationService.key(location));
+        return owner != null && !owner.equals(playerId);
+    }
+
+    public boolean tryLockBoundLocation(Location location, UUID playerId) {
+        if (location == null || location.getWorld() == null) {
+            return true;
+        }
+        String key = CrateLocationService.key(location);
+        UUID previous = activeByBoundLocation.putIfAbsent(key, playerId);
+        return previous == null || previous.equals(playerId);
+    }
+
+    public void unlockBoundLocation(Location location, UUID playerId) {
+        if (location == null || location.getWorld() == null) {
+            return;
+        }
+        activeByBoundLocation.remove(CrateLocationService.key(location), playerId);
     }
 
     public boolean tryBeginBulk(UUID playerId) {
@@ -66,6 +93,9 @@ public final class SessionRegistry {
         UUID playerId = session.context().playerId();
         activeByPlayer.remove(playerId, session);
         playerBySession.remove(session.sessionId(), playerId);
+        if (session.context().boundBlock()) {
+            unlockBoundLocation(session.context().crateLocation(), playerId);
+        }
     }
 
     public void cancelAll() {
@@ -74,6 +104,7 @@ public final class SessionRegistry {
         }
         activeByPlayer.clear();
         playerBySession.clear();
+        activeByBoundLocation.clear();
         bulkLocked.clear();
     }
 

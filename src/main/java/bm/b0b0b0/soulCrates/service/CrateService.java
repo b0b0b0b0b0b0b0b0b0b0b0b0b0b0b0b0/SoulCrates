@@ -207,6 +207,7 @@ public final class CrateService {
                 keyShopService,
                 claimService,
                 keyService,
+                locationService,
                 physicalCrateService,
                 openingService,
                 this::applyConfig
@@ -356,6 +357,9 @@ public final class CrateService {
 
     public void openPreview(Player player, String crateId, Location openLocation) {
         if (!ready(player)) {
+            return;
+        }
+        if (openingService.notifyIfBoundLocationBusy(player, openLocation)) {
             return;
         }
         menuService.openPreview(player, crateId, openLocation);

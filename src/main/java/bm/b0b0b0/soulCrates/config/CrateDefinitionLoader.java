@@ -59,10 +59,9 @@ public final class CrateDefinitionLoader {
     }
 
     private static void ensureExampleCrates(Path cratesDirectory) {
-        ensureExampleCrate(cratesDirectory, "blazing", "Blazing Crate", "BLAZING", "#ff5500");
-        ensureExampleCrate(cratesDirectory, "arcade", "Arcade Crate", "ARCADE", "#a855f7");
-        ensureExampleCrate(cratesDirectory, "keystorm", "Keystorm Crate", "KEYSTORM", "#a78bfa");
-        ensureExampleCrate(cratesDirectory, "classic", "Classic Crate", "CLASSIC", "#cccccc");
+        ensureExampleCrate(cratesDirectory, "csgo", "CSGO Crate", "CSGO_STYLE", "#55ff55");
+        ensureExampleCrate(cratesDirectory, "mob_pick", "Mob Pick Crate", "MOB_PICK", "#f97316");
+        ensureExampleCrate(cratesDirectory, "shulker_pick", "Shulker Pick Crate", "SHULKER_PICK", "#a78bfa");
     }
 
     private static void ensureExampleCrate(

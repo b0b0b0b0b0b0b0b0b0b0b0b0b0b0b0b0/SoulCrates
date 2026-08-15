@@ -9,7 +9,7 @@ public final class KeySettings extends YamlSerializable {
     @Comment({
             @CommentValue("Enable key item + virtual key storage for this crate."),
     })
-    public boolean enabled = false;
+    public boolean enabled = true;
 
     @Comment({
             @CommentValue("Physical key item material."),

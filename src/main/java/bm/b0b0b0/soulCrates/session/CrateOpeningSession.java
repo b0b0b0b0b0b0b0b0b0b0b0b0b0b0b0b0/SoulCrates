@@ -3,13 +3,19 @@ package bm.b0b0b0.soulCrates.session;
 import bm.b0b0b0.soulCrates.animation.OpeningAnimationPipeline;
 import bm.b0b0b0.soulCrates.config.settings.RerollSettings;
 import bm.b0b0b0.soulCrates.engine.DisplayComponent;
+import bm.b0b0b0.soulCrates.gui.CsgoSpinnerMenu;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.OpeningContext;
 import bm.b0b0b0.soulCrates.model.OpeningSessionState;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.model.RewardRollResult;
+import bm.b0b0b0.soulCrates.util.PluginSchedulers;
 import java.util.UUID;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -27,6 +33,9 @@ public final class CrateOpeningSession implements OpeningSession {
     private Runnable onCancel;
     private int rerollsUsed;
     private boolean suppressCancelMessage;
+    private Location maskedBlockLocation;
+    private BlockData maskedBlockData;
+    private CsgoSpinnerMenu csgoSpinnerMenu;
 
     public CrateOpeningSession(
             UUID sessionId,
@@ -86,6 +95,14 @@ public final class CrateOpeningSession implements OpeningSession {
         this.animationPipeline = animationPipeline;
     }
 
+    public CsgoSpinnerMenu csgoSpinnerMenu() {
+        return csgoSpinnerMenu;
+    }
+
+    public void setCsgoSpinnerMenu(CsgoSpinnerMenu csgoSpinnerMenu) {
+        this.csgoSpinnerMenu = csgoSpinnerMenu;
+    }
+
     public void setOnFinish(Runnable onFinish) {
         this.onFinish = onFinish;
     }
@@ -130,6 +147,7 @@ public final class CrateOpeningSession implements OpeningSession {
     }
 
     public void unload() {
+        restoreMaskedCrateBlock();
         if (animationPipeline != null) {
             Player player = Bukkit.getPlayer(context.playerId());
             animationPipeline.unload(player, this);
@@ -192,5 +210,39 @@ public final class CrateOpeningSession implements OpeningSession {
 
     public JavaPlugin plugin() {
         return plugin;
+    }
+
+    public void hideOpeningCrateBlock() {
+        if (!context.boundBlock() && context.instanceId() == null) {
+            return;
+        }
+        Location crateLocation = context.crateLocation();
+        if (crateLocation == null || crateLocation.getWorld() == null) {
+            return;
+        }
+        PluginSchedulers.runAt(plugin, crateLocation, () -> {
+            Block block = crateLocation.getBlock();
+            if (block.getType().isAir()) {
+                return;
+            }
+            if (context.boundBlock()) {
+                maskedBlockLocation = crateLocation.clone();
+                maskedBlockData = block.getBlockData().clone();
+            }
+            block.setType(Material.AIR, false);
+        });
+    }
+
+    public void restoreMaskedCrateBlock() {
+        if (maskedBlockLocation == null || maskedBlockData == null || maskedBlockLocation.getWorld() == null) {
+            maskedBlockLocation = null;
+            maskedBlockData = null;
+            return;
+        }
+        Location location = maskedBlockLocation.clone();
+        BlockData data = maskedBlockData.clone();
+        maskedBlockLocation = null;
+        maskedBlockData = null;
+        PluginSchedulers.runAt(plugin, location, () -> location.getBlock().setBlockData(data, false));
     }
 }

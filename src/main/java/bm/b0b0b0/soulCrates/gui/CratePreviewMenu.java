@@ -6,11 +6,15 @@ import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.RewardDefinition;
 import bm.b0b0b0.soulCrates.service.reward.RewardRollService;
+import bm.b0b0b0.soulCrates.service.key.KeyService;
+import bm.b0b0b0.soulCrates.util.KeyCountLabels;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -25,6 +29,8 @@ public final class CratePreviewMenu extends SoulMenu {
     private final PremiumOpeningSettings premiumOpeningSettings;
     private final CrateDefinition crateDefinition;
     private final RewardRollService rewardRollService;
+    private final KeyService keyService;
+    private final boolean boundStaticCrate;
     private final BiConsumer<Player, Integer> openAction;
     private final Runnable backAction;
     private final Map<Integer, Integer> multiOpenSlots = new HashMap<>();
@@ -37,6 +43,8 @@ public final class CratePreviewMenu extends SoulMenu {
             PremiumOpeningSettings premiumOpeningSettings,
             CrateDefinition crateDefinition,
             RewardRollService rewardRollService,
+            KeyService keyService,
+            boolean boundStaticCrate,
             BiConsumer<Player, Integer> openAction,
             Runnable backAction
     ) {
@@ -50,6 +58,8 @@ public final class CratePreviewMenu extends SoulMenu {
         this.premiumOpeningSettings = premiumOpeningSettings;
         this.crateDefinition = crateDefinition;
         this.rewardRollService = rewardRollService;
+        this.keyService = keyService;
+        this.boundStaticCrate = boundStaticCrate;
         this.openAction = openAction;
         this.backAction = backAction;
         refresh();
@@ -91,13 +101,7 @@ public final class CratePreviewMenu extends SoulMenu {
         }
         getInventory().setItem(
                 previewSettings.openSlot,
-                GuiItemFactory.actionButton(
-                        messageService,
-                        player,
-                        previewSettings.openMaterial,
-                        "preview-open-title",
-                        "preview-open-lore"
-                )
+                openButton(player)
         );
         if (previewSettings.multiOpenButtons
                 && crateDefinition.opening().allowMultiOpen
@@ -145,13 +149,11 @@ public final class CratePreviewMenu extends SoulMenu {
             return;
         }
         if (click.slot() == previewSettings.openSlot) {
-            player.closeInventory();
             openAction.accept(player, 1);
             return;
         }
         Integer amount = multiOpenSlots.get(click.slot());
         if (amount != null) {
-            player.closeInventory();
             openAction.accept(player, amount);
             return;
         }
@@ -161,6 +163,40 @@ public final class CratePreviewMenu extends SoulMenu {
                 backAction.run();
             }
         }
+    }
+
+    private ItemStack openButton(Player player) {
+        ItemStack item = GuiItemFactory.actionButton(
+                messageService,
+                player,
+                previewSettings.openMaterial,
+                "preview-open-title",
+                "preview-open-lore"
+        );
+        if (!boundStaticCrate || !shouldShowKeyCount()) {
+            return item;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+        int keysOwned = keyService.totalKeys(player, crateDefinition.id());
+        String localeId = messageService.resolveLocaleId(player);
+        List<Component> lore = new ArrayList<>(2);
+        lore.add(messageService.component(player.getUniqueId(), "preview-open-lore"));
+        lore.add(messageService.component(
+                player.getUniqueId(),
+                "preview-open-keys-owned",
+                messageService.placeholder("count", Integer.toString(keysOwned)),
+                messageService.placeholder("keys_word", KeyCountLabels.word(localeId, keysOwned))
+        ));
+        meta.lore(lore);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private boolean shouldShowKeyCount() {
+        return crateDefinition.opening().requireKey || crateDefinition.keys().enabled;
     }
 
     private ItemStack multiOpenButton(Player player, int amount, String materialName) {

@@ -13,6 +13,7 @@ import bm.b0b0b0.soulCrates.engine.VanillaDisplayEngine;
 import bm.b0b0b0.soulCrates.model.DisplayEngineKind;
 import bm.b0b0b0.soulCrates.engine.DisplayEngineRegistry;
 import bm.b0b0b0.soulCrates.gui.CrateConfirmMenu;
+import bm.b0b0b0.soulCrates.gui.CsgoSpinnerMenu;
 import bm.b0b0b0.soulCrates.gui.CrateRerollMenu;
 import bm.b0b0b0.soulCrates.gui.CrateSelectRewardMenu;
 import bm.b0b0b0.soulCrates.hook.HookRegistry;
@@ -254,6 +255,9 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         if (!cooldownTracker.check(player, crate)) {
             return;
         }
+        if (notifyIfBoundLocationBusy(player, location)) {
+            return;
+        }
         int safeAmount = normalizeOpenAmount(player, crate, amount);
         Location openLocation = location == null ? player.getLocation() : location;
         if (safeAmount > 1) {
@@ -311,6 +315,9 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
 
     @Override
     public void proceedOpenFlow(Player player, CrateDefinition crate, Location location, int amount) {
+        if (notifyIfBoundLocationBusy(player, location)) {
+            return;
+        }
         Location openLocation = normalizeOpenLocation(location);
         if (amount > 1) {
             if (isSelectMode(crate)) {
@@ -384,6 +391,9 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             messageService.send(player.getUniqueId(), "open-already");
             return;
         }
+        if (notifyIfBoundLocationBusy(player, location)) {
+            return;
+        }
         if (!cooldownTracker.check(player, crate)) {
             return;
         }
@@ -405,6 +415,9 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
     private void redeemSelectedReward(Player player, CrateDefinition crate, Location location, RewardDefinition reward) {
         if (sessionRegistry.isBusy(player.getUniqueId())) {
             messageService.send(player.getUniqueId(), "open-already");
+            return;
+        }
+        if (notifyIfBoundLocationBusy(player, location)) {
             return;
         }
         int keysRequired = reward.requiredKeys(crate.opening().keysRequired);
@@ -458,7 +471,15 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             messageService.send(player.getUniqueId(), "open-already");
             return;
         }
+        if (notifyIfBoundLocationBusy(player, location)) {
+            return;
+        }
         if (!cooldownTracker.check(player, crate)) {
+            return;
+        }
+        Location boundLocation = boundBlockLocation(location);
+        if (boundLocation != null && !sessionRegistry.tryLockBoundLocation(boundLocation, player.getUniqueId())) {
+            messageService.send(player.getUniqueId(), "crate-in-use");
             return;
         }
         int keysPerOpen = crate.opening().requireKey ? Math.max(1, crate.opening().keysRequired) : 0;
@@ -473,6 +494,9 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             }
         }
         if (!sessionRegistry.tryBeginBulk(player.getUniqueId())) {
+            if (boundLocation != null) {
+                sessionRegistry.unlockBoundLocation(boundLocation, player.getUniqueId());
+            }
             messageService.send(player.getUniqueId(), "open-already");
             return;
         }
@@ -481,6 +505,9 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                     PluginSchedulers.run(plugin, player, () -> {
                         if (!consumed) {
                             sessionRegistry.endBulk(player.getUniqueId());
+                            if (boundLocation != null) {
+                                sessionRegistry.unlockBoundLocation(boundLocation, player.getUniqueId());
+                            }
                             messageService.send(player.getUniqueId(), "open-no-keys", messageService.placeholder("crate", crate.displayName()));
                             return;
                         }
@@ -507,7 +534,11 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
     }
 
     private void finishMultiOpen(Player player, CrateDefinition crate, Location location, int amount, List<RewardRollResult> rolls) {
+        Location boundLocation = boundBlockLocation(location);
         bulkOpenService.deliverAll(player, crate, rolls).thenRun(() -> PluginSchedulers.run(plugin, player, () -> {
+            if (boundLocation != null) {
+                sessionRegistry.unlockBoundLocation(boundLocation, player.getUniqueId());
+            }
             resumeIdleIfBound(location);
             sessionRegistry.endBulk(player.getUniqueId());
             Bukkit.getPluginManager().callEvent(new CrateOpenFinishEvent(new OpeningContext(
@@ -562,6 +593,9 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
             return;
         }
         if (!cooldownTracker.check(player, crate)) {
+            return;
+        }
+        if (notifyIfBoundLocationBusy(player, location)) {
             return;
         }
         if (isSelectMode(crate)) {
@@ -622,13 +656,20 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         if (openLocation == null) {
             openLocation = player.getLocation();
         }
+        boolean boundBlock = isBoundBlock(openLocation, instanceId);
+        if (boundBlock && !sessionRegistry.tryLockBoundLocation(openLocation, player.getUniqueId())) {
+            resumeIdleIfBound(location);
+            messageService.send(player.getUniqueId(), "crate-in-use");
+            return;
+        }
         OpeningContext context = new OpeningContext(
                 player.getUniqueId(),
                 crate.id(),
                 openLocation,
                 instanceId != null ? 0 : crate.opening().keysRequired,
                 false,
-                instanceId
+                instanceId,
+                boundBlock
         );
         Bukkit.getPluginManager().callEvent(new CrateOpenStartEvent(context));
         UUID sessionId = UUID.randomUUID();
@@ -650,7 +691,11 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         try {
             sessionRegistry.register(session);
         } catch (IllegalStateException exception) {
+            if (boundBlock) {
+                sessionRegistry.unlockBoundLocation(openLocation, player.getUniqueId());
+            }
             revertPhysicalInstance(session);
+            resumeIdleIfBound(openLocation);
             messageService.send(player.getUniqueId(), "open-already");
             return;
         }
@@ -659,7 +704,19 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
                 "open-started",
                 messageService.placeholder("crate", crate.displayName())
         );
-        player.closeInventory();
+        if (phaseFactory.usesCsgoSpinner(crate)) {
+            CsgoSpinnerMenu csgoMenu = new CsgoSpinnerMenu(
+                    player.getUniqueId(),
+                    messageService,
+                    pluginConfig.guiSpinnerSettings(),
+                    crate,
+                    roll.reward()
+            );
+            session.setCsgoSpinnerMenu(csgoMenu);
+            player.openInventory(csgoMenu.getInventory());
+        } else {
+            player.closeInventory();
+        }
         if (player.hasPermission(premium.instantOpenPermission)) {
             finishWithoutAnimation(player, session, OpeningSkipMode.INSTANT);
             return;
@@ -858,5 +915,29 @@ public final class CrateOpeningService implements CrateOpenCallbacks {
         if (locationService.findCrateId(location).isPresent()) {
             idleCrateDisplayService.resume(location);
         }
+    }
+
+    public boolean notifyIfBoundLocationBusy(Player player, Location location) {
+        Location boundLocation = boundBlockLocation(location);
+        if (boundLocation == null) {
+            return false;
+        }
+        if (!sessionRegistry.isBoundLocationOccupied(boundLocation, player.getUniqueId())) {
+            return false;
+        }
+        messageService.send(player.getUniqueId(), "crate-in-use");
+        return true;
+    }
+
+    private Location boundBlockLocation(Location location) {
+        Location normalized = normalizeOpenLocation(location);
+        if (normalized == null || locationService.findCrateId(normalized).isEmpty()) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private boolean isBoundBlock(Location location, UUID instanceId) {
+        return instanceId == null && boundBlockLocation(location) != null;
     }
 }

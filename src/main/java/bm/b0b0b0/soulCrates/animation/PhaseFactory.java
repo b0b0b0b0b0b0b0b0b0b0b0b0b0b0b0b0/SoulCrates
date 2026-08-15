@@ -42,6 +42,10 @@ public final class PhaseFactory {
         };
     }
 
+    public boolean usesCsgoSpinner(CrateDefinition crateDefinition) {
+        return isGuiSpinnerType(normalizeType(crateDefinition.animations().second.type));
+    }
+
     public String animationId(CrateDefinition crateDefinition, OpeningPhaseKind kind) {
         AnimationPhaseSettings settings = switch (kind) {
             case FIRST -> crateDefinition.animations().first;
@@ -54,14 +58,8 @@ public final class PhaseFactory {
     private PhaseRunner createFirstPhase(AnimationPhaseSettings settings, String type, RewardDefinition rolledReward) {
         return switch (type) {
             case "none" -> new WorldParticlePhase(OpeningPhaseKind.FIRST, WorldParticlePhase.Style.NONE, settings, rolledReward);
-            case "key_opener", "key-opener", "key_insert", "key-insert" ->
-                    new WorldParticlePhase(OpeningPhaseKind.FIRST, WorldParticlePhase.Style.KEY_OPENER, settings, rolledReward);
             case "crack", "lightning" ->
                     new WorldParticlePhase(OpeningPhaseKind.FIRST, WorldParticlePhase.Style.CRACK, settings, rolledReward);
-            case "fire", "blast", "blasting" ->
-                    new WorldParticlePhase(OpeningPhaseKind.FIRST, WorldParticlePhase.Style.FIRE, settings, rolledReward);
-            case "swirl" ->
-                    new WorldParticlePhase(OpeningPhaseKind.FIRST, WorldParticlePhase.Style.SWIRL, settings, rolledReward);
             default ->
                     new WorldParticlePhase(OpeningPhaseKind.FIRST, WorldParticlePhase.Style.DEFAULT, settings, rolledReward);
         };
@@ -111,14 +109,7 @@ public final class PhaseFactory {
                     settings
             );
         }
-        return switch (type) {
-            case "none" -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.NONE, settings, rolledReward);
-            case "swirl" -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.SWIRL, settings, rolledReward);
-            case "ball" -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.BALL, settings, rolledReward);
-            case "fire" -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.FIRE, settings, rolledReward);
-            case "crack" -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.CRACK, settings, rolledReward);
-            default -> new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.SWIRL, settings, rolledReward);
-        };
+        return new WorldParticlePhase(OpeningPhaseKind.SECOND, WorldParticlePhase.Style.NONE, settings, rolledReward);
     }
 
     private PhaseRunner createThirdPhase(AnimationPhaseSettings settings, String type, RewardDefinition rolledReward) {
@@ -127,46 +118,24 @@ public final class PhaseFactory {
         }
         return switch (type) {
             case "none" -> new WorldParticlePhase(OpeningPhaseKind.THIRD, WorldParticlePhase.Style.NONE, settings, rolledReward);
-            case "helix", "smoke_spiral", "fire_spiral" ->
-                    new WorldParticlePhase(OpeningPhaseKind.THIRD, WorldParticlePhase.Style.HELIX, settings, rolledReward);
-            case "ball" -> new WorldParticlePhase(OpeningPhaseKind.THIRD, WorldParticlePhase.Style.BALL, settings, rolledReward);
-            case "swirl" -> new WorldParticlePhase(OpeningPhaseKind.THIRD, WorldParticlePhase.Style.SWIRL, settings, rolledReward);
-            case "fire" -> new WorldParticlePhase(OpeningPhaseKind.THIRD, WorldParticlePhase.Style.FIRE, settings, rolledReward);
-            default -> new WorldParticlePhase(OpeningPhaseKind.THIRD, WorldParticlePhase.Style.DEFAULT, settings, rolledReward);
+            default -> new WorldParticlePhase(OpeningPhaseKind.THIRD, WorldParticlePhase.Style.NONE, settings, rolledReward);
         };
     }
 
     private static boolean isGuiSpinnerType(String type) {
-        return "csgo_gui".equals(type)
-                || "rainbow_gui".equals(type)
-                || "flip_gui".equals(type)
-                || "snake_gui".equals(type);
+        return "csgo_gui".equals(type) || "csgo".equals(type);
     }
 
     private static boolean isWorldCarouselType(String type) {
-        return "csgo".equals(type)
-                || "spinner".equals(type)
-                || "carousel".equals(type)
-                || "world_carousel".equals(type)
-                || "roulette".equals(type)
-                || "orbit".equals(type)
-                || "ring".equals(type)
-                || "display".equals(type);
+        return "carousel".equals(type) || "world_carousel".equals(type);
     }
 
     private static boolean isMobPickType(String type) {
-        return "mob_pick".equals(type)
-                || "mob_circle".equals(type)
-                || "kill_mob_circle".equals(type)
-                || "mystery_mobs".equals(type)
-                || "mob_roulette".equals(type);
+        return "mob_pick".equals(type);
     }
 
     private static boolean isShulkerPickType(String type) {
-        return "shulker_pick".equals(type)
-                || "shulker".equals(type)
-                || "ground_pick".equals(type)
-                || "mystery_shulkers".equals(type);
+        return "shulker_pick".equals(type);
     }
 
     private static String normalizeType(String raw) {
@@ -178,9 +147,9 @@ public final class PhaseFactory {
 
     private static String mapModelEngineAnimation(String type) {
         return switch (type) {
-            case "key_opener", "key_insert", "crack", "lightning", "fire" -> "pre-open";
-            case "csgo", "csgo_gui", "spinner", "swirl", "ball", "carousel", "shulker_pick", "shulker", "ground_pick", "mystery_shulkers", "mob_pick", "mob_circle", "kill_mob_circle", "mystery_mobs", "mob_roulette" -> "open";
-            case "firework", "helix", "reveal", "default" -> "display";
+            case "crack", "lightning" -> "pre-open";
+            case "csgo", "csgo_gui", "carousel", "world_carousel", "shulker_pick", "mob_pick" -> "open";
+            case "firework", "reveal", "default" -> "display";
             case "none" -> "idle";
             default -> type;
         };
