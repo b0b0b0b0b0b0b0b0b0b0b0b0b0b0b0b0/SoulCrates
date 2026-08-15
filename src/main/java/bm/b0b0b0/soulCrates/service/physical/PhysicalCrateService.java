@@ -1,6 +1,8 @@
 package bm.b0b0b0.soulCrates.service.physical;
 
 import bm.b0b0b0.soulCrates.config.settings.PhysicalCrateSettings;
+import bm.b0b0b0.soulCrates.config.settings.WorldGuardPhysicalCrateSettings;
+import bm.b0b0b0.soulCrates.hook.worldguard.WorldGuardHook;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.model.CrateDefinition;
 import bm.b0b0b0.soulCrates.model.CrateInstance;
@@ -40,6 +42,7 @@ public final class PhysicalCrateService {
     private final ConcurrentHashMap<String, UUID> cacheByLocation = new ConcurrentHashMap<>();
     private PhysicalCrateSettings settings = new PhysicalCrateSettings();
     private CrateRegistry crateRegistry;
+    private WorldGuardHook worldGuardHook;
     private ScheduledTask expirationTask;
 
     public PhysicalCrateService(Plugin plugin, MessageService messageService, CrateRepository repository) {
@@ -55,6 +58,39 @@ public final class PhysicalCrateService {
 
     public void attachCrateRegistry(CrateRegistry crateRegistry) {
         this.crateRegistry = crateRegistry;
+    }
+
+    public void attachWorldGuardHook(WorldGuardHook worldGuardHook) {
+        this.worldGuardHook = worldGuardHook;
+        if (this.worldGuardHook != null) {
+            this.worldGuardHook.ensureInitialized((org.bukkit.plugin.java.JavaPlugin) plugin);
+        }
+    }
+
+    private void ensureWorldGuardReady() {
+        if (worldGuardHook != null) {
+            worldGuardHook.ensureInitialized((org.bukkit.plugin.java.JavaPlugin) plugin);
+        }
+    }
+
+    public boolean isWorldGuardBypassRegion(Location location) {
+        if (location == null) {
+            return false;
+        }
+        ensureWorldGuardReady();
+        WorldGuardPhysicalCrateSettings worldGuardSettings = settings.worldGuard;
+        if (worldGuardSettings == null || !worldGuardSettings.enabled || worldGuardHook == null || !worldGuardHook.enabled()) {
+            return false;
+        }
+        return worldGuardHook.isBypassRegion(location, worldGuardSettings);
+    }
+
+    public boolean worldGuardIntegrationEnabled() {
+        WorldGuardPhysicalCrateSettings worldGuardSettings = settings.worldGuard;
+        return worldGuardSettings != null
+                && worldGuardSettings.enabled
+                && worldGuardHook != null
+                && worldGuardHook.enabled();
     }
 
     public void loadCache() {

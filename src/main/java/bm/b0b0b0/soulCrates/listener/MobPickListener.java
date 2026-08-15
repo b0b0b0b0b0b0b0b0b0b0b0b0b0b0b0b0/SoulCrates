@@ -11,6 +11,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -59,24 +60,50 @@ public final class MobPickListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onInteractEntity(PlayerInteractEntityEvent event) {
-        if (tryPickEntity(event.getPlayer(), event.getRightClicked())) {
+        Entity clicked = event.getRightClicked();
+        if (MobCirclePickPhase.isMobPickEntity(plugin, clicked)) {
+            tryPickEntity(event.getPlayer(), clicked);
+            event.setCancelled(true);
+            return;
+        }
+        if (tryPickEntity(event.getPlayer(), clicked)) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onInteractAtEntity(PlayerInteractAtEntityEvent event) {
-        if (tryPickEntity(event.getPlayer(), event.getRightClicked())) {
+        Entity clicked = event.getRightClicked();
+        if (MobCirclePickPhase.isMobPickEntity(plugin, clicked)) {
+            tryPickEntity(event.getPlayer(), clicked);
+            event.setCancelled(true);
+            return;
+        }
+        if (tryPickEntity(event.getPlayer(), clicked)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onMobPickupItem(EntityPickupItemEvent event) {
+        if (MobCirclePickPhase.isMobPickEntity(plugin, event.getEntity())) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = false)
     public void onMobHit(EntityDamageByEntityEvent event) {
+        if (!MobCirclePickPhase.isMobPickEntity(plugin, event.getEntity())) {
+            return;
+        }
         if (!(event.getDamager() instanceof Player player)) {
+            event.setCancelled(true);
+            event.setDamage(0.0);
             return;
         }
         if (!tryPickEntity(player, event.getEntity())) {
+            event.setCancelled(true);
+            event.setDamage(0.0);
             return;
         }
         event.setCancelled(true);

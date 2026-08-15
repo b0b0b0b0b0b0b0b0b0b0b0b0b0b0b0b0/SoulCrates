@@ -51,8 +51,6 @@ public final class MobCirclePickPhase implements PhaseRunner {
     private static final Map<UUID, MobCirclePickPhase> ACTIVE = new ConcurrentHashMap<>();
 
     private static final float LABEL_GAP = 0.55f;
-    private static final float HITBOX_WIDTH = 1.15f;
-    private static final float HITBOX_HEIGHT = 1.85f;
     private static final float PRIZE_ITEM_SCALE = 0.65f;
     private static final float DECOY_ITEM_SCALE = 0.58f;
     private static final float BYTE_ITEM_SCALE = 0.38f;
@@ -168,6 +166,11 @@ public final class MobCirclePickPhase implements PhaseRunner {
         } catch (IllegalArgumentException exception) {
             return false;
         }
+    }
+
+    public static boolean isMobPickEntity(Plugin plugin, Entity entity) {
+        return entity != null
+                && entity.getPersistentDataContainer().has(SoulCratesKeys.mobPickSession(plugin), PersistentDataType.STRING);
     }
 
     @Override
@@ -292,7 +295,7 @@ public final class MobCirclePickPhase implements PhaseRunner {
                 player.getEyeLocation(),
                 player.getEyeLocation().getDirection(),
                 7.5,
-                0.45,
+                0.05,
                 candidate -> candidate instanceof Interaction
                         || (candidate instanceof LivingEntity living && ownsEntity(plugin, living, session.sessionId()))
         );
@@ -303,11 +306,7 @@ public final class MobCirclePickPhase implements PhaseRunner {
                 }
             }
         }
-        Pod best = findLookTargetPod(player);
-        if (best == null) {
-            return false;
-        }
-        return pickPod(player, best.index);
+        return false;
     }
 
     private boolean pickPod(Player player, int index) {
@@ -321,30 +320,6 @@ public final class MobCirclePickPhase implements PhaseRunner {
         }
         onPodPicked(player, index);
         return true;
-    }
-
-    private Pod findLookTargetPod(Player player) {
-        Vector look = player.getEyeLocation().getDirection().normalize();
-        Pod best = null;
-        double bestScore = 0.62;
-        for (Pod pod : pods) {
-            Location centerLocation = podCenter(pod);
-            if (player.getLocation().distanceSquared(centerLocation) > PICK_RANGE_SQ) {
-                continue;
-            }
-            Vector toPod = centerLocation.toVector().subtract(player.getEyeLocation().toVector());
-            double length = toPod.length();
-            if (length < 0.001) {
-                continue;
-            }
-            toPod.normalize();
-            double dot = look.dot(toPod);
-            if (dot > bestScore) {
-                bestScore = dot;
-                best = pod;
-            }
-        }
-        return best;
     }
 
     private void tickPicking(Player player) {
@@ -733,6 +708,7 @@ public final class MobCirclePickPhase implements PhaseRunner {
             Pod pod = new Pod(index, assigned.get(index), base);
             pod.mob = spawnMob(world, base, session.sessionId());
             configureMob(pod.mob);
+            syncPickInteraction(pod);
             pod.label = world.spawn(labelLocation(base), TextDisplay.class, entity -> {
                 entity.text(messageService.component(player.getUniqueId(), "mob-pick-hidden"));
                 entity.setBillboard(Display.Billboard.CENTER);
@@ -743,17 +719,6 @@ public final class MobCirclePickPhase implements PhaseRunner {
                 entity.setViewRange(64.0f);
                 entity.setBrightness(new Display.Brightness(15, 15));
                 entity.setLineWidth(220);
-            });
-            pod.interaction = world.spawn(hitboxCenter(base), Interaction.class, entity -> {
-                entity.setInteractionWidth(HITBOX_WIDTH);
-                entity.setInteractionHeight(HITBOX_HEIGHT);
-                entity.setResponsive(true);
-                entity.setPersistent(false);
-                entity.getPersistentDataContainer().set(
-                        SoulCratesKeys.mobPickSession(plugin),
-                        PersistentDataType.STRING,
-                        session.sessionId().toString()
-                );
             });
             pods.add(pod);
         }
@@ -790,6 +755,19 @@ public final class MobCirclePickPhase implements PhaseRunner {
         if (mob instanceof Mob creature) {
             creature.setAware(false);
         }
+        stripMobInventory(mob);
+    }
+
+    private static void stripMobInventory(LivingEntity mob) {
+        if (mob.getEquipment() == null) {
+            return;
+        }
+        mob.getEquipment().setItemInMainHand(null);
+        mob.getEquipment().setItemInOffHand(null);
+        mob.getEquipment().setHelmet(null);
+        mob.getEquipment().setChestplate(null);
+        mob.getEquipment().setLeggings(null);
+        mob.getEquipment().setBoots(null);
     }
 
     private void updatePodMotion(Player player) {
@@ -811,9 +789,8 @@ public final class MobCirclePickPhase implements PhaseRunner {
                     }
                 }
                 pod.mob.teleport(anchor);
-                if (pod.interaction != null && !pod.interaction.isDead()) {
-                    pod.interaction.teleport(hitboxCenter(anchor));
-                }
+                stripMobInventory(pod.mob);
+                syncPickInteraction(pod);
             } else if (pod.rewardItem != null && !pod.rewardItem.isDead()) {
                 pod.rewardItem.teleport(anchor.clone().add(0.0, 0.12, 0.0));
             }
@@ -909,8 +886,36 @@ public final class MobCirclePickPhase implements PhaseRunner {
         return location;
     }
 
-    private static Location hitboxCenter(Location anchor) {
-        return anchor.clone().add(0.0, HITBOX_HEIGHT * 0.45, 0.0);
+    private void syncPickInteraction(Pod pod) {
+        if (pod.mob == null || pod.mob.isDead()) {
+            return;
+        }
+        Location center = interactionCenter(pod.mob);
+        float width = (float) pod.mob.getWidth();
+        float height = (float) pod.mob.getHeight();
+        if (pod.interaction == null || pod.interaction.isDead()) {
+            World world = pod.mob.getWorld();
+            pod.interaction = world.spawn(center, Interaction.class, entity -> {
+                entity.setInteractionWidth(width);
+                entity.setInteractionHeight(height);
+                entity.setResponsive(true);
+                entity.setPersistent(false);
+                entity.getPersistentDataContainer().set(
+                        SoulCratesKeys.mobPickSession(plugin),
+                        PersistentDataType.STRING,
+                        session.sessionId().toString()
+                );
+            });
+            return;
+        }
+        pod.interaction.teleport(center);
+        pod.interaction.setInteractionWidth(width);
+        pod.interaction.setInteractionHeight(height);
+    }
+
+    private static Location interactionCenter(LivingEntity mob) {
+        Location feet = mob.getLocation();
+        return feet.clone().add(0.0, mob.getHeight() * 0.5, 0.0);
     }
 
     private static Location labelLocation(Location anchor) {

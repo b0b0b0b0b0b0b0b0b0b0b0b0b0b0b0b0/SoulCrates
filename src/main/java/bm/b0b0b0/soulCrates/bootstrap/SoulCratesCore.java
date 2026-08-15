@@ -12,6 +12,10 @@ import bm.b0b0b0.soulCrates.hook.HookRegistry;
 import bm.b0b0b0.soulCrates.hook.modelengine.ModelEngineHookProvider;
 import bm.b0b0b0.soulCrates.hook.placeholder.PlaceholderHookProvider;
 import bm.b0b0b0.soulCrates.hook.vault.VaultHookProvider;
+import bm.b0b0b0.soulCrates.hook.worldguard.WorldGuardBukkitBypassListener;
+import bm.b0b0b0.soulCrates.hook.worldguard.WorldGuardBypassListener;
+import bm.b0b0b0.soulCrates.hook.worldguard.WorldGuardHook;
+import bm.b0b0b0.soulCrates.hook.worldguard.WorldGuardHookProvider;
 import bm.b0b0b0.soulCrates.config.settings.MessagesSettings;
 import bm.b0b0b0.soulCrates.lang.MessageService;
 import bm.b0b0b0.soulCrates.listener.CrateBlockProtectListener;
@@ -81,6 +85,8 @@ public final class SoulCratesCore {
     private PhysicalCrateService physicalCrateService;
     private RedisPlayerMirror redisMirror;
     private RerollService rerollService;
+    private WorldGuardBypassListener worldGuardBypassListener;
+    private WorldGuardBukkitBypassListener worldGuardBukkitBypassListener;
     private CrateInteractListener crateInteractListener;
     private CrateBlockProtectListener crateBlockProtectListener;
     private DatabaseBootstrap databaseBootstrap;
@@ -110,6 +116,7 @@ public final class SoulCratesCore {
         rewardRollService = new RewardRollService();
         hookRegistry = new HookRegistry(plugin);
         hookRegistry.registerProvider(new VaultHookProvider());
+        hookRegistry.registerProvider(new WorldGuardHookProvider());
         hookRegistry.registerProvider(new ModelEngineHookProvider());
         hookRegistry.registerProvider(new PlaceholderHookProvider(() -> crateService));
         hookRegistry.registerHooks();
@@ -158,6 +165,23 @@ public final class SoulCratesCore {
         lootBoxService = new LootBoxService(plugin, messageService);
         physicalCrateService = new PhysicalCrateService(plugin, messageService, repository);
         physicalCrateService.attachCrateRegistry(crateRegistry);
+        hookRegistry.findHook(WorldGuardHook.class).ifPresent(hook -> {
+            physicalCrateService.attachWorldGuardHook(hook);
+            worldGuardBypassListener = new WorldGuardBypassListener(
+                    plugin,
+                    physicalCrateService,
+                    locationService,
+                    hook
+            );
+            worldGuardBukkitBypassListener = new WorldGuardBukkitBypassListener(
+                    plugin,
+                    physicalCrateService,
+                    locationService,
+                    sessionRegistry
+            );
+            hook.registerBypassListener(plugin, worldGuardBypassListener);
+            plugin.getServer().getPluginManager().registerEvents(worldGuardBukkitBypassListener, plugin);
+        });
         physicalCrateService.applySettings(pluginConfig.cratesSettings().physicalCrates);
         physicalCrateService.loadCache();
         bulkOpenService = new BulkOpenService(
@@ -294,6 +318,30 @@ public final class SoulCratesCore {
         }
         if (physicalCrateService != null) {
             physicalCrateService.applySettings(pluginConfig.cratesSettings().physicalCrates);
+            hookRegistry.findHook(WorldGuardHook.class).ifPresent(hook -> {
+                hook.load(plugin);
+                physicalCrateService.attachWorldGuardHook(hook);
+                if (worldGuardBypassListener == null && locationService != null) {
+                    worldGuardBypassListener = new WorldGuardBypassListener(
+                            plugin,
+                            physicalCrateService,
+                            locationService,
+                            hook
+                    );
+                }
+                if (worldGuardBypassListener != null) {
+                    hook.registerBypassListener(plugin, worldGuardBypassListener);
+                }
+                if (worldGuardBukkitBypassListener == null && locationService != null) {
+                    worldGuardBukkitBypassListener = new WorldGuardBukkitBypassListener(
+                            plugin,
+                            physicalCrateService,
+                            locationService,
+                            sessionRegistry
+                    );
+                    plugin.getServer().getPluginManager().registerEvents(worldGuardBukkitBypassListener, plugin);
+                }
+            });
         }
         crateService.applyConfig(pluginConfig);
         if (crateInteractListener != null) {

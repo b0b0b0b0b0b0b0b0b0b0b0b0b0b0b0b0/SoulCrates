@@ -154,6 +154,7 @@ givecrate-received: "<color:#34D399>You received <color:#FBBF24>{amount}</color>
 physical-crate-disabled: "<color:#FB7185>Physical crates are disabled.</color>"
 physical-crate-invalid-item: "<color:#FB7185>This crate item is invalid.</color>"
 physical-crate-place-denied: "<color:#FB7185>You cannot place this crate here.</color>"
+physical-crate-place-region-denied: "<color:#FB7185>You cannot place, open, or pick up a crate in this WorldGuard region.</color>"
 physical-crate-placed: "<color:#34D399>Crate placed: <color:#FBBF24>{crate}</color>. Right-click to browse · <color:#A78BFA>Shift</color> right-click to pick up.</color>"
 physical-crate-break-denied: "<color:#FB7185>You cannot break this crate.</color>"
 physical-crate-pickup-denied: "<color:#FB7185>Only the owner can pick up this crate.</color>"

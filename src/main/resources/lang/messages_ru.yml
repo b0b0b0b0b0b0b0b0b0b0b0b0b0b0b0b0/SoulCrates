@@ -154,6 +154,7 @@ givecrate-received: "<color:#34D399>Вы получили <color:#FBBF24>{amount
 physical-crate-disabled: "<color:#FB7185>Физические кейсы отключены.</color>"
 physical-crate-invalid-item: "<color:#FB7185>Недействительный предмет кейса.</color>"
 physical-crate-place-denied: "<color:#FB7185>Нельзя поставить этот кейс.</color>"
+physical-crate-place-region-denied: "<color:#FB7185>В этом регионе WorldGuard нельзя ставить, открывать или забирать кейс.</color>"
 physical-crate-placed: "<color:#34D399>Кейс установлен: <color:#FBBF24>{crate}</color>. ПКМ — просмотр · <color:#A78BFA>Shift</color> + ПКМ — забрать.</color>"
 physical-crate-break-denied: "<color:#FB7185>Нельзя сломать этот кейс.</color>"
 physical-crate-pickup-denied: "<color:#FB7185>Забрать кейс может только владелец.</color>"

@@ -41,7 +41,7 @@ public final class CrateInteractListener implements Listener {
         this.idleSettings = idleSettings;
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onPlayerInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
             return;
@@ -53,7 +53,7 @@ public final class CrateInteractListener implements Listener {
         openAt(event, block.getLocation());
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
         Entity clicked = event.getRightClicked();
         if (!(clicked instanceof BlockDisplay)) {
@@ -66,6 +66,9 @@ public final class CrateInteractListener implements Listener {
         if (physicalCrateService != null && physicalCrateService.enabled()) {
             Optional<CrateInstance> instance = physicalCrateService.findAt(blockLocation);
             if (instance.isPresent()) {
+                if (isInteractCancelled(event) && !physicalCrateService.isWorldGuardBypassRegion(blockLocation)) {
+                    return;
+                }
                 cancelInteract(event);
                 if (event.getPlayer().isSneaking()) {
                     crateService.pickupPlacedCrate(event.getPlayer(), instance.get(), blockLocation);
@@ -86,6 +89,16 @@ public final class CrateInteractListener implements Listener {
         }
         playInteractSound(blockLocation.getBlock());
         crateService.beginOpen(event.getPlayer(), crateId.get(), blockLocation);
+    }
+
+    private static boolean isInteractCancelled(org.bukkit.event.player.PlayerEvent event) {
+        if (event instanceof PlayerInteractEvent interactEvent) {
+            return interactEvent.isCancelled();
+        }
+        if (event instanceof PlayerInteractEntityEvent entityEvent) {
+            return entityEvent.isCancelled();
+        }
+        return false;
     }
 
     private void cancelInteract(org.bukkit.event.player.PlayerEvent event) {

@@ -40,7 +40,7 @@ public final class PhysicalCrateListener implements Listener {
         this.physicalCrateService = physicalCrateService;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onBlockPlace(BlockPlaceEvent event) {
         if (!physicalCrateService.enabled()) {
             return;
@@ -50,13 +50,12 @@ public final class PhysicalCrateListener implements Listener {
         if (instanceId == null) {
             return;
         }
+        event.setCancelled(true);
         String crateId = physicalCrateService.readCrateId(item);
         if (crateId == null || crateRegistry.find(crateId).isEmpty()) {
-            event.setCancelled(true);
             messageService.send(event.getPlayer().getUniqueId(), "physical-crate-invalid-item");
             return;
         }
-        event.setCancelled(true);
         Player player = event.getPlayer();
         Location location = event.getBlockPlaced().getLocation();
         BlockData blockData = event.getBlockPlaced().getBlockData().clone();
@@ -80,7 +79,7 @@ public final class PhysicalCrateListener implements Listener {
         );
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onBlockBreak(BlockBreakEvent event) {
         if (!physicalCrateService.enabled()) {
             return;
@@ -88,6 +87,10 @@ public final class PhysicalCrateListener implements Listener {
         Block block = event.getBlock();
         Optional<CrateInstance> instanceOptional = resolveInstance(block);
         if (instanceOptional.isEmpty()) {
+            return;
+        }
+        Location location = block.getLocation();
+        if (event.isCancelled() && !physicalCrateService.isWorldGuardBypassRegion(location)) {
             return;
         }
         CrateInstance instance = instanceOptional.get();
@@ -100,7 +103,6 @@ public final class PhysicalCrateListener implements Listener {
         event.setCancelled(true);
         event.setDropItems(false);
         event.setExpToDrop(0);
-        Location location = block.getLocation();
         physicalCrateService.tryUnplace(instance.instanceId(), player.getUniqueId(), location).thenAccept(success ->
                 PluginSchedulers.runAt(plugin, location, () -> {
                     if (!success) {

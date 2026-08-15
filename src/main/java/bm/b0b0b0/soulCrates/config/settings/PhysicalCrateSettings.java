@@ -45,4 +45,9 @@ public final class PhysicalCrateSettings extends YamlSerializable {
             @CommentValue("Seconds after placement to open the crate before it is auto-returned. 0 = disabled."),
     })
     public int openTimeoutSeconds = 50;
+
+    @Comment({
+            @CommentValue("WorldGuard integration for physical crate placement."),
+    })
+    public WorldGuardPhysicalCrateSettings worldGuard = new WorldGuardPhysicalCrateSettings();
 }
